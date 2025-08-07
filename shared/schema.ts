@@ -8,12 +8,14 @@ export const activityLevelEnum = pgEnum("activity_level", ["low", "moderate", "h
 
 export const bloodSugarReadings = pgTable("blood_sugar_readings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
   bloodSugar: decimal("blood_sugar", { precision: 5, scale: 1 }).notNull(),
   mealType: mealTypeEnum("meal_type").notNull(),
-  carbs: integer("carbs").notNull(),
+  carbs: integer("carbs").notNull().default(0),
   activityLevel: activityLevelEnum("activity_level").notNull(),
   timestamp: timestamp("timestamp").notNull().default(sql`now()`),
   notes: text("notes"),
+  mealImageUrl: text("meal_image_url"),
 });
 
 export const insertBloodSugarReadingSchema = createInsertSchema(bloodSugarReadings, {
@@ -22,6 +24,7 @@ export const insertBloodSugarReadingSchema = createInsertSchema(bloodSugarReadin
   notes: z.string().optional(),
 }).omit({
   id: true,
+  userId: true,
   timestamp: true,
 });
 

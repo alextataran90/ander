@@ -1,3 +1,5 @@
+import { uploadToSupabase } from "@/utils/uploadToSupabase";
+import { toast } from "sonner";
 import { supabase } from "@/supabaseClient";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -5,7 +7,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { insertBloodSugarReadingSchema, type InsertBloodSugarReading } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import { useHaptic } from "@/hooks/use-haptic";
 import LoadingOverlay from "@/components/ui/loading-overlay";
 import { Button } from "@/components/ui/button";
@@ -14,8 +15,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/
 export default function BloodSugarForm() {
   const [selectedMealType, setSelectedMealType] = useState<string>("breakfast");
   const [selectedActivity, setSelectedActivity] = useState<string>("moderate");
+  const [mealImage, setMealImage] = useState<File | null>(null);
   const [carbsValue, setCarbsValue] = useState(45);
-  const { toast } = useToast();
   const { triggerHaptic } = useHaptic();
   const queryClient = useQueryClient();
 
@@ -41,28 +42,60 @@ export default function BloodSugarForm() {
         throw new Error("User not authenticated.");
       }
 
-      console.log("📤 Sending to Supabase:", data);
+      let mealImageUrl = null;
 
+      // ✅ Upload image to Supabase Storage if present
+      if (data.mealImage) {
+        const filePath = `user-${user.id}/${Date.now()}-${data.mealImage.name}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("meal-photos")
+          .upload(filePath, data.mealImage);
+
+        if (uploadError) {
+          console.error("❌ Failed to upload image:", uploadError.message);
+          throw new Error("Failed to upload meal photo.");
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from("meal-photos")
+          .getPublicUrl(filePath);
+
+        mealImageUrl = publicUrlData.publicUrl;
+      }
+
+      // ✅ Insert reading including image URL
       const { error } = await supabase.from("readings").insert([
         {
           blood_sugar: data.bloodSugar,
           meal: data.mealType,
-          carbs: data.carbs,
+          carbs: data.carbs, // You can leave or remove this field if deprecated
           activity_level: data.activityLevel,
           notes: data.notes,
           timestamp: new Date().toISOString(),
-          user_id: user.id, // ✅ Attach user_id
+          user_id: user.id,
+          meal_image_url: mealImageUrl, // ✅ New field
         },
       ]);
 
       if (error) {
-        console.error("🔥 Supabase insert error:", error);
         throw new Error(error.message);
       }
+    },
 
-      console.log("✅ Supabase insert success");
-    }
+    onSuccess: () => {
+      toast.success("✅ Reading logged successfully!");
+      triggerHaptic("heavy");
+      queryClient.invalidateQueries({ queryKey: ["/api/blood-sugar-readings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/blood-sugar-stats"] });
+      form.reset();
+    },
 
+    onError: (error: any) => {
+      console.error("❌ Insert failed:", error.message);
+      triggerHaptic("medium");
+      toast.error(`❌ ${error.message || "Failed to save reading."}`);
+    },
   });
 
 
@@ -73,14 +106,15 @@ export default function BloodSugarForm() {
       mealType: selectedMealType as any,
       activityLevel: selectedActivity as any,
       carbs: carbsValue,
+      mealImage: mealImage, // ✅ add this
     });
   };
 
   const mealTypes = [
+     { value: "fasted", icon: "fa-cookie-bite", color: "text-ios-orange", label: "Fasted" },
     { value: "breakfast", icon: "fa-sun", color: "text-ios-orange", label: "Breakfast" },
     { value: "lunch", icon: "fa-sun", color: "text-yellow-400", label: "Lunch" },
     { value: "dinner", icon: "fa-moon", color: "text-ios-purple", label: "Dinner" },
-    { value: "snack", icon: "fa-cookie-bite", color: "text-ios-orange", label: "Snack" },
   ];
 
   const activityLevels = [
@@ -128,80 +162,99 @@ export default function BloodSugarForm() {
               {/* Meal type selection */}
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-3">Meal Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {mealTypes.map((meal) => (
-                    <button
-                      key={meal.value}
-                      type="button"
-                      className={`ios-button glass text-center py-3 rounded-xl transition-all ${
-                        selectedMealType === meal.value 
-                          ? 'bg-glass-white-strong border-ios-blue' 
-                          : ''
-                      }`}
-                      onClick={() => {
-                        setSelectedMealType(meal.value);
-                        triggerHaptic("light");
-                      }}
-                      data-testid={`button-meal-${meal.value}`}
-                    >
-                      <i className={`fas ${meal.icon} ${meal.color} mb-1`}></i>
-                      <div className="text-sm">{meal.label}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Meal Type">
+                  {mealTypes.map((meal) => {
+                    const isSelected = selectedMealType === meal.value;
 
-              {/* Carbohydrate count */}
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Carbohydrates (g)
-                </label>
-                <div className="glass rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-lg font-bold" data-testid="text-carbs-value">
-                      {carbsValue}
-                    </span>
-                    <span className="text-sm text-white/70">grams</span>
-                  </div>
-                  <input
-                    type="range"
-                    className="ios-range w-full"
-                    min="0"
-                    max="150"
-                    value={carbsValue}
-                    onChange={(e) => {
-                      setCarbsValue(Number(e.target.value));
-                      triggerHaptic("light");
-                    }}
-                    data-testid="slider-carbs"
-                  />
+                    return (
+                      <button
+                        key={meal.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        className={`ios-button glass text-center py-4 rounded-2xl relative font-medium transition-all duration-200 ${
+                          isSelected
+                            ? 'bg-green-500/30 border-4 border-green-500 ring-4 ring-green-400/30 shadow-lg'
+                            : 'bg-white/10 border border-white/10 opacity-80 hover:opacity-100'
+                        }`}
+                        onClick={() => {
+                          setSelectedMealType(meal.value);
+                          triggerHaptic("light");
+                        }}
+                      >
+                        <i className={`fas ${meal.icon} ${meal.color} mb-1 text-xl`}></i>
+                        <div className="text-sm">{meal.label}</div>
+
+                        {isSelected && (
+                          <span className="absolute top-2 right-2 text-green-500">
+                            <i className="fas fa-check-circle" />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Activity level */}
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-3">Activity Level</label>
-                <div className="flex space-x-2">
-                  {activityLevels.map((activity) => (
-                    <button
-                      key={activity.value}
-                      type="button"
-                      className={`ios-button glass flex-1 text-center py-3 rounded-xl transition-all ${
-                        selectedActivity === activity.value 
-                          ? 'bg-glass-white-strong border-ios-blue' 
-                          : ''
-                      }`}
-                      onClick={() => {
-                        setSelectedActivity(activity.value);
-                        triggerHaptic("light");
-                      }}
-                      data-testid={`button-activity-${activity.value}`}
-                    >
-                      <i className={`fas ${activity.icon} ${activity.color} mb-1`}></i>
-                      <div className="text-xs">{activity.label}</div>
-                    </button>
-                  ))}
+                <div className="flex space-x-2" role="radiogroup" aria-label="Activity Level">
+                  {activityLevels.map((activity) => {
+                    const isSelected = selectedActivity === activity.value;
+
+                    return (
+                      <button
+                        key={activity.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        className={`ios-button glass flex-1 text-center py-4 rounded-2xl relative font-medium transition-all duration-200 ${
+                          isSelected
+                            ? 'bg-green-500/30 border-4 border-green-500 ring-4 ring-green-400/30 shadow-lg'
+                            : 'bg-white/10 border border-white/10 opacity-80 hover:opacity-100'
+                        }`}
+                        onClick={() => {
+                          setSelectedActivity(activity.value);
+                          triggerHaptic("light");
+                        }}
+                      >
+                        <i className={`fas ${activity.icon} ${activity.color} mb-1 text-lg`}></i>
+                        <div className="text-xs">{activity.label}</div>
+
+                        {isSelected && (
+                          <span className="absolute top-2 right-2 text-green-500">
+                            <i className="fas fa-check-circle" />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
+              </div>
+              {/* Upload photo */}
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-white/80 mb-2">
+                  Upload Meal Photo
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setMealImage(e.target.files?.[0] || null)}
+                  className="block w-full text-white bg-transparent file:mr-4 file:py-2 file:px-4
+                             file:rounded-full file:border-0 file:text-sm file:font-semibold
+                             file:bg-blue-500 file:text-white hover:file:bg-blue-600"
+                />
+                {mealImage && (
+                  <div className="mt-2">
+                    <p className="text-white/70 text-sm mb-1">Preview:</p>
+                    <img
+                      src={URL.createObjectURL(mealImage)}
+                      alt="Meal Preview"
+                      className="w-full rounded-xl max-h-60 object-cover border border-white/20"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Submit button */}

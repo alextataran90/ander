@@ -1,0 +1,90 @@
+Replit Agent Prompt: Weekly History View + Export to PDF Report
+I’m building a health tracking app in React + TypeScript using Supabase as the backend and storage.
+
+I already have authentication working, and users can submit blood sugar readings that are stored in the readings table. Each reading includes:
+
+timestamp
+
+blood_sugar
+
+meal
+
+activity_level
+
+notes
+
+user_id
+
+meal_image_url (optional)
+
+🔁 Task Part 1: Redesign the History Page with Weekly Grouped View
+Please update or create the History.tsx component with the following logic:
+
+Fetch all readings for the currently logged-in user from Supabase.
+
+Group readings by week (using startOfWeek to endOfWeek logic, Monday to Sunday).
+
+Each week should be a collapsible section with a label like:
+
+“🗓️ August 5 – August 11”
+
+Inside each week, display daily submissions with:
+
+Blood sugar value
+
+Meal type
+
+Timestamp (formatted nicely)
+
+Optional meal photo preview (if meal_image_url exists)
+
+Sort readings descending by date, newest week on top.
+
+Use clean and mobile-friendly UI (Tailwind preferred).
+
+📤 Task Part 2: Export History to PDF and Email
+Add functionality to allow users to select a date range and send a PDF report to an email:
+
+Add a section at the top of the History page:
+
+📅 Start Date input (date picker)
+
+📅 End Date input (date picker)
+
+📧 Email input field
+
+✉️ Submit button “Send Report”
+
+When submitted:
+
+Filter user readings from Supabase within the selected date range.
+
+Generate a PDF report using jsPDF, pdf-lib, or react-pdf:
+
+Include each reading with date, meal, blood sugar, activity level, and notes.
+
+Embed images (meal photos) if available.
+
+Upload the generated PDF to Supabase Storage OR send directly.
+
+Trigger email to user with PDF attached.
+
+If needed, create a serverless function (Replit backend) or route /api/send-report to send the email using a service like:
+
+Resend
+
+SendGrid
+
+Supabase Edge Function
+
+🔒 Requirements
+Use Supabase auth to ensure users only access their own readings.
+
+Validate inputs (date range & email format).
+
+PDF should be styled nicely (not raw JSON).
+
+Make the UI mobile-friendly and consistent with existing styling.
+
+✅ Please update any existing History.tsx file, or create it in src/pages/history.tsx.
+Let me know if you need access to any existing components — I’ll provide them.

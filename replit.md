@@ -1,6 +1,6 @@
 # Overview
 
-Ander is a modern blood sugar tracking application designed specifically for gestational diabetes management. The app features an iOS-optimized design with a futuristic glassmorphism aesthetic and comprehensive data visualization capabilities. Built as a full-stack TypeScript application, it provides real-time blood sugar monitoring, meal tracking, activity logging, and detailed insights to help users manage their health effectively.
+Ander is a modern blood sugar tracking application designed specifically for gestational diabetes management. The app features an iOS-optimized design with a futuristic glassmorphism aesthetic and comprehensive data visualization capabilities. Built as a full-stack TypeScript application with Supabase backend, it provides real-time blood sugar monitoring, meal tracking, activity logging, detailed insights, and comprehensive history management with PDF export functionality to help users manage their health effectively.
 
 # User Preferences
 
@@ -28,45 +28,54 @@ The app follows a mobile-first design approach with PWA capabilities, featuring:
 
 ## Backend Architecture
 
-The server-side uses Express.js with TypeScript in a RESTful API pattern:
+The application uses a hybrid approach with Supabase as the primary backend:
 
-- **Framework**: Express.js with TypeScript for robust server-side development
-- **API Design**: RESTful endpoints for blood sugar reading CRUD operations
-- **Data Storage**: In-memory storage implementation with interface-based design for easy database integration
-- **Validation**: Zod schemas shared between client and server for consistent data validation
-- **Error Handling**: Centralized error handling middleware with structured error responses
+- **Primary Backend**: Supabase for authentication, real-time database, and file storage
+- **Local API**: Express.js with TypeScript for additional processing and legacy endpoints
+- **Authentication**: Supabase Auth with email/password authentication and protected routes
+- **Database**: PostgreSQL via Supabase with strongly typed schema using Drizzle ORM
+- **File Storage**: Supabase Storage for meal photos and PDF reports
+- **Data Validation**: Zod schemas shared between client and server for consistent validation
 
-Key API endpoints include:
-- `GET /api/blood-sugar-readings` - Retrieve all readings
-- `POST /api/blood-sugar-readings` - Create new reading
-- `PATCH /api/blood-sugar-readings/:id` - Update existing reading
-- `DELETE /api/blood-sugar-readings/:id` - Remove reading
-- `GET /api/blood-sugar-stats` - Retrieve aggregated statistics
+Key features include:
+- User-specific data isolation with `user_id` foreign keys
+- Real-time data synchronization via Supabase
+- Secure file uploads with automatic URL generation
+- PDF report generation and storage capabilities
 
 ## Data Storage Solutions
 
-The application uses a flexible storage architecture:
+The application uses Supabase as the primary data storage solution:
 
-- **Current Implementation**: In-memory storage using Map data structures for development and testing
-- **Database Ready**: Drizzle ORM configuration with PostgreSQL schema definitions
-- **Migration Support**: Drizzle Kit for database migrations and schema management
-- **Schema Design**: Strongly typed database schema with enums for meal types and activity levels
+- **Primary Database**: Supabase PostgreSQL with real-time capabilities
+- **ORM**: Drizzle ORM for type-safe database operations and schema management
+- **File Storage**: Supabase Storage buckets for meal photos and PDF reports
+- **Schema Design**: Strongly typed database schema with user isolation and enums
 
 The data model includes:
-- Blood sugar readings with decimal precision
+- User-specific blood sugar readings with decimal precision
 - Meal type categorization (breakfast, lunch, dinner, snack)
 - Activity level tracking (low, moderate, high)
-- Carbohydrate intake logging
-- Optional notes field for additional context
-- Automatic timestamp generation
+- Carbohydrate intake logging with validation
+- Optional notes and meal image attachments
+- Automatic timestamp generation and user association
+- PDF report generation and storage capabilities
 
 ## Authentication and Authorization
 
-Currently implemented as a single-user application without authentication. The architecture supports future implementation of:
-- User session management
-- Role-based access control
-- Secure API endpoints
-- Data isolation between users
+Comprehensive authentication system implemented with Supabase Auth:
+
+- **User Management**: Complete signup/login system with email verification
+- **Session Management**: Automatic session persistence and refresh tokens
+- **Route Protection**: Protected routes that require authentication
+- **Data Isolation**: User-specific data access with `user_id` filtering
+- **Security Features**: Email confirmation, secure session handling, and logout functionality
+
+Features include:
+- Email/password authentication with Supabase
+- Automatic redirect handling for email confirmations
+- Loading states and error handling for auth operations
+- Context-based authentication state management throughout the app
 
 ## External Dependencies
 

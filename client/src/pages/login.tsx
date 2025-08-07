@@ -177,6 +177,32 @@ export default function Login() {
               </form>
             </Form>
 
+            {/* Manual Confirmation URL Input */}
+            <div className="text-center mt-4">
+              <details className="text-left">
+                <summary className="text-white/70 text-sm hover:text-white/90 transition-colors cursor-pointer">
+                  Have a confirmation URL from email?
+                </summary>
+                <div className="mt-4 space-y-3">
+                  <p className="text-white/60 text-xs">
+                    If the email link didn't work, paste the URL here:
+                  </p>
+                  <input
+                    type="url"
+                    className="ios-input w-full text-xs"
+                    placeholder="Paste confirmation URL..."
+                    onChange={(e) => {
+                      const url = e.target.value;
+                      if (url.includes('access_token=')) {
+                        window.location.href = url.replace('localhost:3000', window.location.host);
+                      }
+                    }}
+                    data-testid="input-confirmation-url"
+                  />
+                </div>
+              </details>
+            </div>
+
             {/* Forgot Password Link */}
             <div className="text-center mt-4">
               <button 

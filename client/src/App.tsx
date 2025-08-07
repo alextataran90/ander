@@ -13,6 +13,7 @@ import Insights from "@/pages/insights";
 import Settings from "@/pages/settings";
 import Login from "@/pages/login";
 import Signup from "@/pages/signup";
+import EmailConfirm from "@/pages/email-confirm";
 
 // Theme Provider Component
 function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -66,6 +67,7 @@ function Router() {
       </Route>
       <Route path="/login" component={Login} />
       <Route path="/signup" component={Signup} />
+      <Route path="/email-confirm" component={EmailConfirm} />
       <Route component={NotFound} />
     </Switch>
   );

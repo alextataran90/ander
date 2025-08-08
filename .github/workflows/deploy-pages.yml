@@ -2,12 +2,17 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -21,28 +26,30 @@ jobs:
         with:
           node-version: 20
 
+      # Install at repo root (your package.json is here)
       - name: Install deps
         run: npm ci
-        working-directory: ./client
 
+      # Build at repo root; your vite.config sets root=client and outDir=dist/public
       - name: Build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
-        working-directory: ./client
 
+      # SPA fallback for React Router
       - name: Create 404.html for SPA routing
-        run: cp client/dist/index.html client/dist/404.html
+        run: cp dist/public/index.html dist/public/404.html
 
+      # Publish the built site (dist/public)
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: client/dist
+          path: dist/public
 
   deploy:
-    runs-on: ubuntu-latest
     needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -50,3 +57,4 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+

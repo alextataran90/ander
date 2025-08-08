@@ -356,31 +356,29 @@ export default function History() {
 
       // Try to send email via API
       let emailSent = false;
-      let emailError = null;
-      
+      let emailError: string | null = null;
+
       try {
-        const response = await fetch("/api/send-report", {
+        const response = await fetch("/api/email-report", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            to: reportEmail,                 // <-- recipient
+            userEmail: user.email,           // <-- will be reply-to on the email
             startDate,
             endDate,
-            recipientEmail: reportEmail,
-            userEmail: user.email,
-            pdfBuffer: pdfBase64,
             readingCount: filteredReadings.length,
+            pdfBase64,                       // <-- the base64 we just built
           }),
         });
 
         if (response.ok) {
           emailSent = true;
         } else {
-          const errorData = await response.json();
-          emailError = errorData.message || "Failed to send email";
+          const errorData = await response.json().catch(() => ({}));
+          emailError = errorData.error || errorData.message || "Failed to send email";
         }
-      } catch (error) {
+      } catch (err) {
         emailError = "Email service temporarily unavailable";
       }
 

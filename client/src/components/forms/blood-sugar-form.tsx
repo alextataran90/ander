@@ -17,6 +17,15 @@ export default function BloodSugarForm() {
   const [selectedActivity, setSelectedActivity] = useState<string>("moderate");
   const [mealImage, setMealImage] = useState<File | null>(null);
   const [carbsValue, setCarbsValue] = useState(45);
+  const toLocalYMD = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  const [readingDate, setReadingDate] = useState<string>(toLocalYMD(new Date()));
+
   const { triggerHaptic } = useHaptic();
   const queryClient = useQueryClient();
 
@@ -72,7 +81,8 @@ export default function BloodSugarForm() {
           carbs: data.carbs, // You can leave or remove this field if deprecated
           activity_level: data.activityLevel,
           notes: data.notes,
-          timestamp: new Date().toISOString(),
+          //timestamp: new Date().toISOString(),
+          timestamp: new Date(`${readingDate}T12:00:00`).toISOString(),
           user_id: user.id,
           meal_image_url: mealImageUrl, // ✅ New field
         },
@@ -158,7 +168,6 @@ export default function BloodSugarForm() {
                   </FormItem>
                 )}
               />
-
               {/* Meal type selection */}
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-3">Meal Type</label>
@@ -195,7 +204,22 @@ export default function BloodSugarForm() {
                   })}
                 </div>
               </div>
-
+              {/* Date selector */}
+              <FormItem>
+                <FormLabel className="block text-sm font-medium text-white/80 mb-2">
+                  Date
+                </FormLabel>
+                <FormControl>
+                  <input
+                    type="date"
+                    className="ios-input w-full text-center font-medium"
+                    value={readingDate}
+                    max={toLocalYMD(new Date())}   // prevent selecting a future date
+                    onChange={(e) => setReadingDate(e.target.value)}
+                    data-testid="input-reading-date"
+                  />
+                </FormControl>
+              </FormItem>
               {/* Activity level */}
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-3">Activity Level</label>

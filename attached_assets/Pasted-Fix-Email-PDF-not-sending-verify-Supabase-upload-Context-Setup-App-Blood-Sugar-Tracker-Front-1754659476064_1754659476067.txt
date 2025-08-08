@@ -1,0 +1,152 @@
+Fix “Email PDF” not sending & verify Supabase upload
+Context / Setup
+App: Blood Sugar Tracker
+
+Frontend: React + TS (Vite), TanStack Query, Tailwind, Sonner
+
+Backend: Express (in server/), Vite SSR helper
+
+DB & Auth: Supabase (Postgres, RLS)
+
+Storage: Supabase bucket reports (PDF backups)
+
+Email: SendGrid (server-side only)
+
+Env (Replit Secrets)
+VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+
+SENDGRID_API_KEY
+
+SENDGRID_FROM (verified sender)
+
+Relevant Files
+server/email.ts → helper that sends mail via SendGrid (uses SENDGRID_FROM)
+
+server/email-report.ts → Express route POST /api/email-report that calls sendBloodSugarReport
+
+server/index.ts → mounts routes; must include:
+
+ts
+Copy
+Edit
+app.use(express.json({ limit: "10mb" }));
+app.use(emailReportRouter);
+client/src/pages/history.tsx → “Export Report” card with Email PDF button
+
+Storage Policies (bucket-scoped for reports)
+Create (if missing) under Storage → reports → Policies:
+
+INSERT: bucket_id = 'reports' AND auth.uid() = owner
+
+UPDATE: bucket_id = 'reports' AND auth.uid() = owner (needed because client uses upsert: true)
+
+SELECT: bucket_id = 'reports' AND auth.uid() = owner
+
+Current Symptoms
+Clicking Email PDF sometimes produces no Network request.
+
+Previously, upload to reports bucket returned 400 (policies were global, now fixed).
+
+When request does fire, server should return 200 and SendGrid should send (or log a concrete error).
+
+What to Do (Checklist)
+A) Backend sanity
+Confirm route registration order in server/index.ts:
+
+app.use(express.json({ limit: "10mb" }));
+
+app.use(emailReportRouter);
+
+Then registerRoutes(app) / Vite setup / listen(...).
+
+Open server/email-report.ts and confirm it expects:
+
+ts
+Copy
+Edit
+{ to, userEmail, startDate, endDate, readingCount, pdfBase64 }
+and calls sendBloodSugarReport(...) with Buffer.from(pdfBase64, "base64").
+
+Open server/email.ts and confirm:
+
+Uses SENDGRID_FROM as the from address (not recipient).
+
+Logs err.response.body on SendGrid errors.
+
+Restart the Repl after any server changes.
+
+B) Frontend wiring (client/src/pages/history.tsx)
+In sendReportMutation.mutate ensure it POSTs to the right route:
+
+ts
+Copy
+Edit
+fetch("/api/email-report", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    to: reportEmail,
+    userEmail: user.email,
+    startDate,
+    endDate,
+    readingCount: filteredReadings.length,
+    pdfBase64, // base64 without data: prefix
+  }),
+})
+NOTE: Previously it posted to /api/send-report and used recipientEmail / pdfBuffer. Those names must be the ones above.
+
+Add diagnostic logs at the start of mutationFn and before fetch:
+
+ts
+Copy
+Edit
+console.log("[EmailPDF] start", { startDate, endDate, reportEmail });
+console.log("[EmailPDF] POST /api/email-report");
+Ensure the Email button isn’t disabled:
+
+tsx
+Copy
+Edit
+disabled={sendReportMutation.isPending || !startDate || !endDate || !reportEmail}
+Ensure the date range actually contains readings (otherwise the function throws early).
+
+C) Supabase Storage upload (after email)
+Bucket name must be reports (matches .from("reports")).
+
+File path must not start with /:
+
+ts
+Copy
+Edit
+const filePath = `reports/${user.id}/blood-sugar-report-${startDate}-to-${endDate}.pdf`
+If 400 persists, temporarily remove { upsert: true } or confirm UPDATE policy exists.
+
+D) Run & Verify
+Load History page → pick a date range with readings → set a valid email → click Email PDF.
+
+Browser Network: POST /api/email-report → 200 OK.
+
+Replit Console:
+
+On failure, should log a SendGrid error body (e.g. unverified sender).
+
+On success, no error; check mailbox.
+
+Supabase Storage: confirm PDF file appears in reports bucket under /reports/<userId>/....
+
+E) If SendGrid still doesn’t deliver
+Check SendGrid Activity and Suppressions (remove bounces/blocks).
+
+Ensure SENDGRID_FROM is a verified sender/domain and API key has Mail Send permission.
+
+Deliverables
+Working Email PDF flow: clicking the button sends the report and uploads PDF to reports.
+
+If code changes were needed, commit them with a clear message:
+
+fix(email): wire /api/email-report, correct payload, add logs
+
+fix(storage): enforce bucket-scoped RLS for reports
+
+Post a short note with what was changed and why, plus a screenshot of a successful Network 200 and the Storage object.
+

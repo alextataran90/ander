@@ -1,8 +1,12 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import emailReportRouter from "./email-report";
 
 const app = express();
+app.use(express.json({ limit: "10mb" })); // Allow big PDF uploads
+// Register email report route
+app.use(emailReportRouter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 

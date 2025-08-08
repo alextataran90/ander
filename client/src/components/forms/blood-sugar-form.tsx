@@ -156,8 +156,8 @@ export default function BloodSugarForm() {
                     <FormControl>
                       <input
                         type="number"
-                        className="ios-input w-full text-2xl text-center font-bold"
-                        placeholder="120"
+                        className="ios-input w-full text-2xl text-center font-bold placeholder:text-white placeholder:italic placeholder:font-bold"
+                        placeholder="Insert your readings here"
                         min="50"
                         max="500"
                         {...field}

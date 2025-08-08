@@ -564,9 +564,9 @@ export default function History() {
                     className="ios-button flex-1 bg-ios-blue text-white rounded-2xl py-4 font-medium disabled:opacity-50 min-h-[60px]"
                     data-testid="button-download-report"
                   >
-                    <div className="flex flex-col items-center space-y-1">
-                      <i className="fas fa-download text-lg" />
-                      <span className="text-xs">
+                    <div className="flex flex-col items-center space-y-0.5">
+                      <i className="fas fa-download text-base" />
+                      <span className="text-sm">
                         {downloadReportMutation.isPending ? "Generating..." : "Download"}
                       </span>
                     </div>
@@ -583,9 +583,9 @@ export default function History() {
                     className="ios-button flex-1 bg-ios-red text-white rounded-2xl py-4 font-medium disabled:opacity-50 min-h-[60px]"
                     data-testid="button-send-report"
                   >
-                    <div className="flex flex-col items-center space-y-1">
-                      <i className="fas fa-paper-plane text-lg" />
-                      <span className="text-xs">
+                    <div className="flex flex-col items-center space-y-0.5">
+                      <i className="fas fa-paper-plane text-base" />
+                      <span className="text-sm">
                         {sendReportMutation.isPending ? "Sending..." : "Email PDF"}
                       </span>
                     </div>

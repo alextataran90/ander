@@ -32,7 +32,7 @@ export default function BloodSugarForm() {
   const form = useForm<InsertBloodSugarReading>({
     resolver: zodResolver(insertBloodSugarReadingSchema),
     defaultValues: {
-      bloodSugar: 120,
+      bloodSugar: undefined as any, // Allow empty initial state
       mealType: "breakfast",
       carbs: 45,
       activityLevel: "moderate",
@@ -161,7 +161,11 @@ export default function BloodSugarForm() {
                         min="50"
                         max="500"
                         {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        value={field.value || ""} // Show empty string when undefined
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === "" ? undefined : Number(value));
+                        }}
                         data-testid="input-blood-sugar"
                       />
                     </FormControl>

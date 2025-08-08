@@ -184,43 +184,135 @@ export default function History() {
     doc.setFontSize(12);
     doc.setTextColor(100, 100, 100);
     doc.text(`Report Period: ${startDate} to ${endDate}`, pageWidth / 2, y, { align: "center" });
-    y += 20;
+    y += 15;
 
     // User info
+    doc.setFontSize(10);
+    doc.setTextColor(60, 60, 60);
     doc.text(`User: ${user?.email || "Unknown"}`, margin, y);
-    y += 10;
+    y += 8;
     doc.text(`Total Readings: ${filteredReadings.length}`, margin, y);
+    doc.text(`Generated: ${format(new Date(), "MMM d, yyyy h:mm a")}`, pageWidth - margin, y, { align: "right" });
     y += 20;
 
-    // Readings
-    doc.setFontSize(10);
-    doc.setTextColor(40, 40, 40);
+    // Table setup
+    const tableStartY = y;
+    const colWidths = [35, 25, 30, 25, 25, 30]; // Date, Time, Meal, Blood Sugar, Carbs, Activity
+    const rowHeight = 8;
+    let currentY = tableStartY;
+
+    // Table headers
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.setFillColor(79, 70, 229); // Purple header background
+    doc.rect(margin, currentY, pageWidth - 2 * margin, rowHeight, 'F');
     
-    filteredReadings.forEach((reading, index) => {
-      if (y > 250) {
-        doc.addPage();
-        y = margin;
-      }
-
-      const date = format(parseISO(reading.timestamp), "MMM d, yyyy h:mm a");
-      const bloodSugar = `${reading.blood_sugar} mg/dL`;
-      const meal = reading.meal;
-      const carbs = `${reading.carbs}g carbs`;
-      const activity = reading.activity_level;
-
-      doc.text(`${index + 1}. ${date}`, margin, y);
-      y += 6;
-      doc.text(`   Blood Sugar: ${bloodSugar} | Meal: ${meal}`, margin, y);
-      y += 6;
-      doc.text(`   Carbs: ${carbs} | Activity: ${activity}`, margin, y);
-      
-      if (reading.notes) {
-        y += 6;
-        doc.text(`   Notes: ${reading.notes}`, margin, y);
-      }
-      
-      y += 10;
+    let currentX = margin + 2;
+    const headers = ['Date', 'Time', 'Meal', 'Blood Sugar', 'Carbs', 'Activity'];
+    
+    headers.forEach((header, index) => {
+      doc.text(header, currentX, currentY + 5);
+      currentX += colWidths[index];
     });
+    
+    currentY += rowHeight;
+
+    // Table rows
+    doc.setTextColor(40, 40, 40);
+    filteredReadings.forEach((reading, index) => {
+      // Check if we need a new page
+      if (currentY > 250) {
+        doc.addPage();
+        currentY = margin;
+        
+        // Redraw headers on new page
+        doc.setFontSize(9);
+        doc.setTextColor(255, 255, 255);
+        doc.setFillColor(79, 70, 229);
+        doc.rect(margin, currentY, pageWidth - 2 * margin, rowHeight, 'F');
+        
+        currentX = margin + 2;
+        headers.forEach((header, index) => {
+          doc.text(header, currentX, currentY + 5);
+          currentX += colWidths[index];
+        });
+        
+        currentY += rowHeight;
+        doc.setTextColor(40, 40, 40);
+      }
+
+      // Alternating row colors
+      if (index % 2 === 0) {
+        doc.setFillColor(248, 249, 250);
+        doc.rect(margin, currentY, pageWidth - 2 * margin, rowHeight, 'F');
+      }
+
+      // Parse date and time
+      const readingDate = parseISO(reading.timestamp);
+      const dateStr = format(readingDate, "MMM d, yyyy");
+      const timeStr = format(readingDate, "h:mm a");
+      
+      // Table data
+      currentX = margin + 2;
+      const rowData = [
+        dateStr,
+        timeStr,
+        reading.meal,
+        `${reading.blood_sugar} mg/dL`,
+        `${reading.carbs}g`,
+        reading.activity_level
+      ];
+      
+      doc.setFontSize(8);
+      rowData.forEach((data, colIndex) => {
+        doc.text(data, currentX, currentY + 5);
+        currentX += colWidths[colIndex];
+      });
+      
+      currentY += rowHeight;
+      
+      // Add notes row if present
+      if (reading.notes) {
+        if (currentY > 250) {
+          doc.addPage();
+          currentY = margin;
+        }
+        
+        doc.setFillColor(255, 255, 220); // Light yellow for notes
+        doc.rect(margin, currentY, pageWidth - 2 * margin, rowHeight, 'F');
+        doc.setFontSize(7);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`Notes: ${reading.notes}`, margin + 2, currentY + 5);
+        currentY += rowHeight;
+        doc.setTextColor(40, 40, 40);
+      }
+    });
+
+    // Summary section at the bottom
+    currentY += 15;
+    if (currentY > 250) {
+      doc.addPage();
+      currentY = margin;
+    }
+
+    doc.setFontSize(10);
+    doc.setTextColor(60, 60, 60);
+    doc.text("Summary Statistics:", margin, currentY);
+    currentY += 10;
+
+    const avgBloodSugar = filteredReadings.reduce((sum, r) => sum + r.blood_sugar, 0) / filteredReadings.length;
+    const avgCarbs = filteredReadings.reduce((sum, r) => sum + r.carbs, 0) / filteredReadings.length;
+    const highReadings = filteredReadings.filter(r => r.blood_sugar > 140).length;
+    const lowReadings = filteredReadings.filter(r => r.blood_sugar < 70).length;
+
+    doc.setFontSize(8);
+    doc.text(`Average Blood Sugar: ${avgBloodSugar.toFixed(1)} mg/dL`, margin, currentY);
+    currentY += 6;
+    doc.text(`Average Carbs: ${avgCarbs.toFixed(1)}g`, margin, currentY);
+    currentY += 6;
+    doc.text(`High Readings (>140): ${highReadings} (${((highReadings/filteredReadings.length)*100).toFixed(1)}%)`, margin, currentY);
+    currentY += 6;
+    doc.text(`Low Readings (<70): ${lowReadings} (${((lowReadings/filteredReadings.length)*100).toFixed(1)}%)`, margin, currentY);
 
     return doc;
   };

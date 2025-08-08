@@ -23,6 +23,10 @@ export default defineConfig({
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
     },
   },
+
+  // 👇 This tells Vite the correct base path for GitHub Pages
+  base: "/ander/",
+
   root: path.resolve(import.meta.dirname, "client"),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),

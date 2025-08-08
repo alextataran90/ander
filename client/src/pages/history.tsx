@@ -376,33 +376,31 @@ export default function History() {
       for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
       const pdfBase64 = btoa(binary);
 
-      // send email
+      // send email via Supabase Edge Function
       let emailSent = false;
       let emailError: string | null = null;
 
       try {
-        const res = await fetch("/api/email-report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        const { data, error } = await supabase.functions.invoke("email-report", {
+          body: {
             to: reportEmail,
             userEmail: user.email,
             startDate,
             endDate,
             readingCount: filtered.length,
-            pdfBase64,
-          }),
+            pdfBase64, // base64 only (no "data:application/pdf;base64," prefix)
+          },
         });
 
-        if (res.ok) {
-          emailSent = true;
+        if (error) {
+          emailError = error.message ?? "Failed to send email";
         } else {
-          const data = await res.json().catch(() => ({}));
-          emailError = data.error || data.message || "Failed to send email";
+          emailSent = true;
         }
       } catch {
         emailError = "Email service temporarily unavailable";
       }
+
 
       // backup to Storage (best-effort)
       const fileName = `blood-sugar-report-${startDate}-to-${endDate}.pdf`;

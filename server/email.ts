@@ -40,7 +40,7 @@ export async function sendEmail(params: EmailParams): Promise<boolean> {
   try {
     const msg: MailDataRequired = {
       to: params.to,
-      from: FROM_EMAIL, // ✅ must be verified in SendGrid
+      from: FROM_EMAIL as string, // ✅ must be verified in SendGrid
       subject: params.subject,
       text: params.text || "",
       html: params.html || "",

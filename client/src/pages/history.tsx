@@ -320,6 +320,8 @@ export default function History() {
   // Generate and send report mutation
   const sendReportMutation = useMutation({
     mutationFn: async () => {
+      console.log("[EmailPDF] start", { startDate, endDate, reportEmail });
+      
       if (!startDate || !endDate || !reportEmail) {
         throw new Error("Please fill in all fields");
       }
@@ -359,6 +361,7 @@ export default function History() {
       let emailError: string | null = null;
 
       try {
+        console.log("[EmailPDF] POST /api/email-report");
         const response = await fetch("/api/email-report", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

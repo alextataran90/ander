@@ -49,9 +49,9 @@ export default function History() {
   useEffect(() => {
     if (!startDate && !endDate) {
       const today = new Date();
-      const sevenDaysAgo = subDays(today, 7);
-      setStartDate(toYMD(sevenDaysAgo));
-      setEndDate(toYMD(today));
+      const todayStr = toYMD(today);
+      setStartDate(todayStr);
+      setEndDate(todayStr);
     }
   }, []); // Run only once on mount
   const [reportEmail, setReportEmail] = useState("");

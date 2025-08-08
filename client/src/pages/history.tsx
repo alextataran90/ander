@@ -40,6 +40,61 @@ export default function History() {
   const [reportEmail, setReportEmail] = useState("");
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
 
+  // Separate mutation for download only
+  const downloadReportMutation = useMutation({
+    mutationFn: async () => {
+      if (!startDate || !endDate) {
+        throw new Error("Please select start and end dates");
+      }
+
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+
+      // Filter readings by date range
+      const start = parseISO(startDate);
+      const end = parseISO(endDate + "T23:59:59");
+      
+      const filteredReadings = readings.filter(reading => {
+        const readingDate = parseISO(reading.timestamp);
+        return isWithinInterval(readingDate, { start, end });
+      });
+
+      if (filteredReadings.length === 0) {
+        throw new Error("No readings found in the selected date range");
+      }
+
+      // Generate and download PDF
+      const pdf = generatePDF(filteredReadings);
+      const pdfBlob = pdf.output("blob");
+
+      const fileName = `blood-sugar-report-${startDate}-to-${endDate}.pdf`;
+      const url = window.URL.createObjectURL(pdfBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      return { success: true, readingCount: filteredReadings.length };
+    },
+    onSuccess: (result) => {
+      triggerHaptic("medium");
+      toast({
+        title: "Report Downloaded!",
+        description: `PDF with ${result.readingCount} readings saved to your device.`,
+      });
+    },
+    onError: (error: any) => {
+      triggerHaptic("medium");
+      toast({
+        title: "Download Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Fetch user readings from Supabase
   const { data: readings = [], isLoading } = useQuery<Reading[]>({
     queryKey: ["user-readings"],
@@ -378,15 +433,27 @@ export default function History() {
                   />
                 </div>
                 
-                <Button
-                  onClick={() => sendReportMutation.mutate()}
-                  disabled={sendReportMutation.isPending || !startDate || !endDate || !reportEmail}
-                  className="ios-button w-full bg-ios-red text-white rounded-2xl py-3 font-semibold disabled:opacity-50"
-                  data-testid="button-send-report"
-                >
-                  <i className="fas fa-paper-plane mr-2"></i>
-                  {sendReportMutation.isPending ? "Generating Report..." : "✉️ Send Report"}
-                </Button>
+                <div className="flex gap-3">
+                  <Button
+                    onClick={() => downloadReportMutation.mutate()}
+                    disabled={downloadReportMutation.isPending || !startDate || !endDate}
+                    className="ios-button flex-1 bg-ios-blue text-white rounded-2xl py-3 font-semibold disabled:opacity-50"
+                    data-testid="button-download-report"
+                  >
+                    <i className="fas fa-download mr-2"></i>
+                    {downloadReportMutation.isPending ? "Generating..." : "📄 Download PDF"}
+                  </Button>
+                  
+                  <Button
+                    onClick={() => sendReportMutation.mutate()}
+                    disabled={sendReportMutation.isPending || !startDate || !endDate || !reportEmail}
+                    className="ios-button flex-1 bg-ios-red text-white rounded-2xl py-3 font-semibold disabled:opacity-50"
+                    data-testid="button-send-report"
+                  >
+                    <i className="fas fa-paper-plane mr-2"></i>
+                    {sendReportMutation.isPending ? "Sending..." : "✉️ Email PDF"}
+                  </Button>
+                </div>
               </div>
             </div>
           </section>
@@ -491,7 +558,11 @@ export default function History() {
         <BottomNav />
       </div>
 
-      <LoadingOverlay isVisible={sendReportMutation.isPending} message="Generating PDF Report..." subtitle="Please wait" />
+      <LoadingOverlay 
+        isVisible={sendReportMutation.isPending || downloadReportMutation.isPending} 
+        message={sendReportMutation.isPending ? "Sending Email Report..." : "Generating PDF Report..."} 
+        subtitle="Please wait" 
+      />
     </>
   );
 }

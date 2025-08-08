@@ -1,10 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/supabaseClient";
 import Header from "@/components/layout/header";
 import BottomNav from "@/components/layout/bottom-nav";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { format, startOfWeek, endOfWeek, isWithinInterval, parseISO } from "date-fns";
+import {
+  format,
+  startOfWeek,
+  endOfWeek,
+  isWithinInterval,
+  parseISO,
+  subDays,
+} from "date-fns";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -19,7 +26,7 @@ interface Reading {
   meal: string;
   carbs: number;
   activity_level: string;
-  timestamp: string;
+  timestamp: string; // ISO string
   notes?: string;
   meal_image_url?: string;
 }
@@ -34,68 +41,20 @@ export default function History() {
   const { user } = useAuth();
   const { toast } = useToast();
   const { triggerHaptic } = useHaptic();
-  
+
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reportEmail, setReportEmail] = useState("");
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
 
-  // Separate mutation for download only
-  const downloadReportMutation = useMutation({
-    mutationFn: async () => {
-      if (!startDate || !endDate) {
-        throw new Error("Please select start and end dates");
-      }
+  // Quick range selection: null | "all" | "7" | "30"
+  const [quickRange, setQuickRange] = useState<"all" | "7" | "30" | null>(null);
 
-      if (!user) {
-        throw new Error("User not authenticated");
-      }
+  // helper for yyyy-MM-dd input value
+  const toYMD = (d: Date) => d.toISOString().slice(0, 10);
 
-      // Filter readings by date range
-      const start = parseISO(startDate);
-      const end = parseISO(endDate + "T23:59:59");
-      
-      const filteredReadings = readings.filter(reading => {
-        const readingDate = parseISO(reading.timestamp);
-        return isWithinInterval(readingDate, { start, end });
-      });
 
-      if (filteredReadings.length === 0) {
-        throw new Error("No readings found in the selected date range");
-      }
-
-      // Generate and download PDF
-      const pdf = generatePDF(filteredReadings);
-      const pdfBlob = pdf.output("blob");
-
-      const fileName = `blood-sugar-report-${startDate}-to-${endDate}.pdf`;
-      const url = window.URL.createObjectURL(pdfBlob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      window.URL.revokeObjectURL(url);
-
-      return { success: true, readingCount: filteredReadings.length };
-    },
-    onSuccess: (result) => {
-      triggerHaptic("medium");
-      toast({
-        title: "Report Downloaded!",
-        description: `PDF with ${result.readingCount} readings saved to your device.`,
-      });
-    },
-    onError: (error: any) => {
-      triggerHaptic("medium");
-      toast({
-        title: "Download Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Fetch user readings from Supabase
+  // Fetch user readings
   const { data: readings = [], isLoading } = useQuery<Reading[]>({
     queryKey: ["user-readings"],
     queryFn: async () => {
@@ -113,11 +72,35 @@ export default function History() {
     enabled: !!user,
   });
 
+  // When quickRange changes, overwrite the date inputs
+  useEffect(() => {
+    if (!quickRange) return;
+
+    const today = new Date();
+
+    if (quickRange === "all") {
+      if (readings.length === 0) return;
+      const earliest = readings
+        .map((r) => parseISO(r.timestamp))
+        .reduce((acc, d) => (d < acc ? d : acc), parseISO(readings[0].timestamp));
+
+      setStartDate(toYMD(earliest));
+      setEndDate(toYMD(today));
+      return;
+    }
+
+    // "7" or "30"
+    const days = Number(quickRange);
+    const start = subDays(today, days);
+    setStartDate(toYMD(start));
+    setEndDate(toYMD(today));
+  }, [quickRange, readings]);
+
   // Group readings by week
   const groupReadingsByWeek = (): WeekGroup[] => {
     const weeks: Map<string, WeekGroup> = new Map();
 
-    readings.forEach(reading => {
+    readings.forEach((reading) => {
       const readingDate = parseISO(reading.timestamp);
       const weekStart = startOfWeek(readingDate, { weekStartsOn: 1 }); // Monday
       const weekEnd = endOfWeek(readingDate, { weekStartsOn: 1 }); // Sunday
@@ -127,15 +110,15 @@ export default function History() {
         weeks.set(weekKey, {
           weekStart,
           weekEnd,
-          readings: []
+          readings: [],
         });
       }
 
       weeks.get(weekKey)!.readings.push(reading);
     });
 
-    return Array.from(weeks.values()).sort((a, b) => 
-      b.weekStart.getTime() - a.weekStart.getTime()
+    return Array.from(weeks.values()).sort(
+      (a, b) => b.weekStart.getTime() - a.weekStart.getTime()
     );
   };
 
@@ -143,11 +126,16 @@ export default function History() {
 
   const getMealIcon = (mealType: string) => {
     switch (mealType) {
-      case "breakfast": return "fa-sun text-ios-orange";
-      case "lunch": return "fa-sun text-yellow-400";
-      case "dinner": return "fa-moon text-ios-purple";
-      case "snack": return "fa-cookie-bite text-ios-orange";
-      default: return "fa-utensils text-white";
+      case "breakfast":
+        return "fa-sun text-ios-orange";
+      case "lunch":
+        return "fa-sun text-yellow-400";
+      case "dinner":
+        return "fa-moon text-ios-purple";
+      case "snack":
+        return "fa-cookie-bite text-ios-orange";
+      default:
+        return "fa-utensils text-white";
     }
   };
 
@@ -158,289 +146,287 @@ export default function History() {
   };
 
   const toggleWeek = (weekKey: string) => {
-    const newExpanded = new Set(expandedWeeks);
-    if (newExpanded.has(weekKey)) {
-      newExpanded.delete(weekKey);
-    } else {
-      newExpanded.add(weekKey);
-    }
-    setExpandedWeeks(newExpanded);
+    const copy = new Set(expandedWeeks);
+    copy.has(weekKey) ? copy.delete(weekKey) : copy.add(weekKey);
+    setExpandedWeeks(copy);
   };
 
-  // PDF generation function
-  const generatePDF = (filteredReadings: Reading[]) => {
+  // PDF generation
+  const generatePDF = (filtered: Reading[]) => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     const margin = 20;
     let y = margin;
 
-    // Title
     doc.setFontSize(20);
     doc.setTextColor(40, 40, 40);
     doc.text("Blood Sugar Report", pageWidth / 2, y, { align: "center" });
     y += 20;
 
-    // Date range
     doc.setFontSize(12);
     doc.setTextColor(100, 100, 100);
-    doc.text(`Report Period: ${startDate} to ${endDate}`, pageWidth / 2, y, { align: "center" });
+    doc.text(`Report Period: ${startDate} to ${endDate}`, pageWidth / 2, y, {
+      align: "center",
+    });
     y += 15;
 
-    // User info
     doc.setFontSize(10);
     doc.setTextColor(60, 60, 60);
     doc.text(`User: ${user?.email || "Unknown"}`, margin, y);
     y += 8;
-    doc.text(`Total Readings: ${filteredReadings.length}`, margin, y);
-    doc.text(`Generated: ${format(new Date(), "MMM d, yyyy h:mm a")}`, pageWidth - margin, y, { align: "right" });
+    doc.text(`Total Readings: ${filtered.length}`, margin, y);
+    doc.text(format(new Date(), "MMM d, yyyy h:mm a"), pageWidth - margin, y, {
+      align: "right",
+    });
     y += 20;
 
-    // Table setup
-    const tableStartY = y;
-    const colWidths = [35, 25, 30, 25, 25, 30]; // Date, Time, Meal, Blood Sugar, Carbs, Activity
-    const rowHeight = 8;
-    let currentY = tableStartY;
+    const colWidths = [35, 25, 30, 30, 25, 30]; // Date, Time, Meal, Blood Sugar, Carbs, Activity
+    const rowH = 8;
+    let curY = y;
 
-    // Table headers
     doc.setFontSize(9);
     doc.setTextColor(255, 255, 255);
-    doc.setFillColor(79, 70, 229); // Purple header background
-    doc.rect(margin, currentY, pageWidth - 2 * margin, rowHeight, 'F');
-    
-    let currentX = margin + 2;
-    const headers = ['Date', 'Time', 'Meal', 'Blood Sugar', 'Carbs', 'Activity'];
-    
-    headers.forEach((header, index) => {
-      doc.text(header, currentX, currentY + 5);
-      currentX += colWidths[index];
-    });
-    
-    currentY += rowHeight;
+    doc.setFillColor(79, 70, 229);
+    doc.rect(margin, curY, pageWidth - 2 * margin, rowH, "F");
 
-    // Table rows
+    let curX = margin + 2;
+    ["Date", "Time", "Meal", "Blood Sugar", "Carbs", "Activity"].forEach(
+      (h, i) => {
+        doc.text(h, curX, curY + 5);
+        curX += colWidths[i];
+      }
+    );
+    curY += rowH;
+
     doc.setTextColor(40, 40, 40);
-    filteredReadings.forEach((reading, index) => {
-      // Check if we need a new page
-      if (currentY > 250) {
+    filtered.forEach((r, idx) => {
+      if (curY > 250) {
         doc.addPage();
-        currentY = margin;
-        
-        // Redraw headers on new page
+        curY = margin;
         doc.setFontSize(9);
         doc.setTextColor(255, 255, 255);
         doc.setFillColor(79, 70, 229);
-        doc.rect(margin, currentY, pageWidth - 2 * margin, rowHeight, 'F');
-        
-        currentX = margin + 2;
-        headers.forEach((header, index) => {
-          doc.text(header, currentX, currentY + 5);
-          currentX += colWidths[index];
-        });
-        
-        currentY += rowHeight;
+        doc.rect(margin, curY, pageWidth - 2 * margin, rowH, "F");
+        curX = margin + 2;
+        ["Date", "Time", "Meal", "Blood Sugar", "Carbs", "Activity"].forEach(
+          (h, i) => {
+            doc.text(h, curX, curY + 5);
+            curX += colWidths[i];
+          }
+        );
+        curY += rowH;
         doc.setTextColor(40, 40, 40);
       }
 
-      // Alternating row colors
-      if (index % 2 === 0) {
+      if (idx % 2 === 0) {
         doc.setFillColor(248, 249, 250);
-        doc.rect(margin, currentY, pageWidth - 2 * margin, rowHeight, 'F');
+        doc.rect(margin, curY, pageWidth - 2 * margin, rowH, "F");
       }
 
-      // Parse date and time
-      const readingDate = parseISO(reading.timestamp);
-      const dateStr = format(readingDate, "MMM d, yyyy");
-      const timeStr = format(readingDate, "h:mm a");
-      
-      // Table data
-      currentX = margin + 2;
-      const rowData = [
-        dateStr,
-        timeStr,
-        reading.meal,
-        `${reading.blood_sugar} mg/dL`,
-        `${reading.carbs}g`,
-        reading.activity_level
+      const d = parseISO(r.timestamp);
+      const row = [
+        format(d, "MMM d, yyyy"),
+        format(d, "h:mm a"),
+        r.meal,
+        `${r.blood_sugar} mg/dL`,
+        `${r.carbs}g`,
+        r.activity_level,
       ];
-      
+
+      curX = margin + 2;
       doc.setFontSize(8);
-      rowData.forEach((data, colIndex) => {
-        doc.text(data, currentX, currentY + 5);
-        currentX += colWidths[colIndex];
+      row.forEach((val, i) => {
+        doc.text(val, curX, curY + 5);
+        curX += colWidths[i];
       });
-      
-      currentY += rowHeight;
-      
-      // Add notes row if present
-      if (reading.notes) {
-        if (currentY > 250) {
+
+      curY += rowH;
+
+      if (r.notes) {
+        if (curY > 250) {
           doc.addPage();
-          currentY = margin;
+          curY = margin;
         }
-        
-        doc.setFillColor(255, 255, 220); // Light yellow for notes
-        doc.rect(margin, currentY, pageWidth - 2 * margin, rowHeight, 'F');
+        doc.setFillColor(255, 255, 220);
+        doc.rect(margin, curY, pageWidth - 2 * margin, rowH, "F");
         doc.setFontSize(7);
         doc.setTextColor(80, 80, 80);
-        doc.text(`Notes: ${reading.notes}`, margin + 2, currentY + 5);
-        currentY += rowHeight;
+        doc.text(`Notes: ${r.notes}`, margin + 2, curY + 5);
+        curY += rowH;
         doc.setTextColor(40, 40, 40);
       }
     });
 
-    // Summary section at the bottom
-    currentY += 15;
-    if (currentY > 250) {
+    curY += 15;
+    if (curY > 250) {
       doc.addPage();
-      currentY = margin;
+      curY = margin;
     }
+
+    const avgBS =
+      filtered.reduce((s, r) => s + r.blood_sugar, 0) / filtered.length;
+    const avgCarbs =
+      filtered.reduce((s, r) => s + r.carbs, 0) / filtered.length;
+    const highs = filtered.filter((r) => r.blood_sugar > 140).length;
+    const lows = filtered.filter((r) => r.blood_sugar < 70).length;
 
     doc.setFontSize(10);
     doc.setTextColor(60, 60, 60);
-    doc.text("Summary Statistics:", margin, currentY);
-    currentY += 10;
-
-    const avgBloodSugar = filteredReadings.reduce((sum, r) => sum + r.blood_sugar, 0) / filteredReadings.length;
-    const avgCarbs = filteredReadings.reduce((sum, r) => sum + r.carbs, 0) / filteredReadings.length;
-    const highReadings = filteredReadings.filter(r => r.blood_sugar > 140).length;
-    const lowReadings = filteredReadings.filter(r => r.blood_sugar < 70).length;
+    doc.text("Summary:", margin, curY);
+    curY += 10;
 
     doc.setFontSize(8);
-    doc.text(`Average Blood Sugar: ${avgBloodSugar.toFixed(1)} mg/dL`, margin, currentY);
-    currentY += 6;
-    doc.text(`Average Carbs: ${avgCarbs.toFixed(1)}g`, margin, currentY);
-    currentY += 6;
-    doc.text(`High Readings (>140): ${highReadings} (${((highReadings/filteredReadings.length)*100).toFixed(1)}%)`, margin, currentY);
-    currentY += 6;
-    doc.text(`Low Readings (<70): ${lowReadings} (${((lowReadings/filteredReadings.length)*100).toFixed(1)}%)`, margin, currentY);
+    doc.text(`Average Blood Sugar: ${avgBS.toFixed(1)} mg/dL`, margin, curY);
+    curY += 6;
+    doc.text(`Average Carbs: ${avgCarbs.toFixed(1)} g`, margin, curY);
+    curY += 6;
+    doc.text(
+      `High Readings (>140): ${highs} (${((highs / filtered.length) * 100).toFixed(1)}%)`,
+      margin,
+      curY
+    );
+    curY += 6;
+    doc.text(
+      `Low Readings (<70): ${lows} (${((lows / filtered.length) * 100).toFixed(1)}%)`,
+      margin,
+      curY
+    );
 
     return doc;
   };
 
-  // Generate and send report mutation
-  const sendReportMutation = useMutation({
+  // Download report
+  const downloadReportMutation = useMutation({
     mutationFn: async () => {
-      console.log("[EmailPDF] start", { startDate, endDate, reportEmail });
-      
-      if (!startDate || !endDate || !reportEmail) {
-        throw new Error("Please fill in all fields");
-      }
+      if (!startDate || !endDate) throw new Error("Please select start and end dates");
+      if (!user) throw new Error("User not authenticated");
 
-      if (!user) {
-        throw new Error("User not authenticated");
-      }
-
-      // Filter readings by date range
       const start = parseISO(startDate);
       const end = parseISO(endDate + "T23:59:59");
-      
-      const filteredReadings = readings.filter(reading => {
-        const readingDate = parseISO(reading.timestamp);
-        return isWithinInterval(readingDate, { start, end });
+
+      const filtered = readings.filter((r) => {
+        const d = parseISO(r.timestamp);
+        return isWithinInterval(d, { start, end });
       });
 
-      if (filteredReadings.length === 0) {
+      if (filtered.length === 0)
         throw new Error("No readings found in the selected date range");
-      }
 
-      // Generate PDF
-      const pdf = generatePDF(filteredReadings);
-      const pdfBlob = pdf.output("blob");
-
-      // Convert PDF to base64 for API transmission
-      const pdfBuffer = await pdfBlob.arrayBuffer();
-      const bytes = new Uint8Array(pdfBuffer);
-      let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      const pdfBase64 = btoa(binary);
-
-      // Try to send email via API
-      let emailSent = false;
-      let emailError: string | null = null;
-
-      try {
-        console.log("[EmailPDF] POST /api/email-report");
-        const response = await fetch("/api/email-report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: reportEmail,                 // <-- recipient
-            userEmail: user.email,           // <-- will be reply-to on the email
-            startDate,
-            endDate,
-            readingCount: filteredReadings.length,
-            pdfBase64,                       // <-- the base64 we just built
-          }),
-        });
-
-        if (response.ok) {
-          emailSent = true;
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          emailError = errorData.error || errorData.message || "Failed to send email";
-        }
-      } catch (err) {
-        emailError = "Email service temporarily unavailable";
-      }
-
-      // Also upload PDF to Supabase Storage for backup
+      const pdf = generatePDF(filtered);
+      const blob = pdf.output("blob");
       const fileName = `blood-sugar-report-${startDate}-to-${endDate}.pdf`;
-      const filePath = `reports/${user.id}/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("reports")
-        .upload(filePath, pdfBlob, {
-          contentType: "application/pdf",
-          upsert: true
-        });
-
-      if (uploadError) {
-        console.warn("Failed to backup PDF:", uploadError.message);
-      }
-
-      // Also provide download option
-      const url = window.URL.createObjectURL(pdfBlob);
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = fileName;
       a.click();
-      window.URL.revokeObjectURL(url);
+      URL.revokeObjectURL(url);
 
-      return { 
-        success: true, 
-        emailSent, 
-        emailError,
-        message: emailSent ? "Report emailed successfully" : "Report generated (email pending)"
-      };
+      return { count: filtered.length };
     },
-    onSuccess: (result: any) => {
-      triggerHaptic("heavy");
-      
-      if (result.emailSent) {
-        toast({
-          title: "Report Sent Successfully!",
-          description: `Your PDF report has been emailed to ${reportEmail} and downloaded locally.`,
+    onSuccess: ({ count }) => {
+      triggerHaptic("medium");
+      toast({
+        title: "Report Downloaded!",
+        description: `PDF with ${count} readings saved to your device.`,
+      });
+    },
+    onError: (e: any) => {
+      triggerHaptic("medium");
+      toast({ title: "Download Failed", description: e.message, variant: "destructive" });
+    },
+  });
+
+  // Email report
+  const sendReportMutation = useMutation({
+    mutationFn: async () => {
+      if (!startDate || !endDate || !reportEmail)
+        throw new Error("Please fill in all fields");
+      if (!user) throw new Error("User not authenticated");
+
+      const start = parseISO(startDate);
+      const end = parseISO(endDate + "T23:59:59");
+
+      const filtered = readings.filter((r) => {
+        const d = parseISO(r.timestamp);
+        return isWithinInterval(d, { start, end });
+      });
+
+      if (filtered.length === 0)
+        throw new Error("No readings found in the selected date range");
+
+      const pdf = generatePDF(filtered);
+      const blob = pdf.output("blob");
+
+      // base64 for API
+      const arrBuf = await blob.arrayBuffer();
+      const bytes = new Uint8Array(arrBuf);
+      let binary = "";
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      const pdfBase64 = btoa(binary);
+
+      // send email
+      let emailSent = false;
+      let emailError: string | null = null;
+
+      try {
+        const res = await fetch("/api/email-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: reportEmail,
+            userEmail: user.email,
+            startDate,
+            endDate,
+            readingCount: filtered.length,
+            pdfBase64,
+          }),
         });
-      } else {
-        toast({
-          title: "Report Generated!",
-          description: `PDF downloaded locally. Email setup needed - check SendGrid verification.`,
-          variant: "default",
-        });
+
+        if (res.ok) {
+          emailSent = true;
+        } else {
+          const data = await res.json().catch(() => ({}));
+          emailError = data.error || data.message || "Failed to send email";
+        }
+      } catch {
+        emailError = "Email service temporarily unavailable";
       }
-      
-      // Clear form
-      setStartDate("");
-      setEndDate("");
+
+      // backup to Storage (best-effort)
+      const fileName = `blood-sugar-report-${startDate}-to-${endDate}.pdf`;
+      const filePath = `reports/${user.id}/${fileName}`;
+      await supabase.storage.from("reports").upload(filePath, blob, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+
+      // also download locally
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      return { emailSent, emailError };
+    },
+    onSuccess: ({ emailSent }) => {
+      triggerHaptic("heavy");
+      toast({
+        title: emailSent ? "Report Sent Successfully!" : "Report Generated!",
+        description: emailSent
+          ? `PDF emailed and downloaded locally.`
+          : `PDF downloaded locally. Email pending—check SendGrid verification.`,
+      });
       setReportEmail("");
     },
-    onError: (error: any) => {
+    onError: (e: any) => {
       triggerHaptic("medium");
       toast({
         title: "Report Generation Failed",
-        description: error.message,
+        description: e.message,
         variant: "destructive",
       });
     },
@@ -474,16 +460,15 @@ export default function History() {
     <>
       <div className="min-h-screen">
         <Header />
-        
+
         <div className="px-4 py-6">
           {/* PDF Export Section */}
           <section className="mb-6">
             <div className="glass-strong rounded-3xl p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center">
-                <i className="fas fa-file-pdf text-ios-red mr-3"></i>
+                <i className="fas fa-file-pdf text-ios-red mr-3" />
                 Export Report
               </h2>
-              
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -511,6 +496,50 @@ export default function History() {
                     />
                   </div>
                 </div>
+
+                {/* Quick Range Shortcuts - tiny pill buttons with toggle */}
+                <div className="flex gap-2 mb-4">
+                  {([
+                    { label: "All Readings", value: "all" },
+                    { label: "Last 7 Days", value: "7" },
+                    { label: "Last 30 Days", value: "30" },
+                  ] as const).map((opt) => {
+                    const selected = quickRange === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          if (selected) {
+                            // Deselect: reset both dates to today
+                            const todayStr = toYMD(new Date());
+                            setStartDate(todayStr);
+                            setEndDate(todayStr);
+                            setQuickRange(null);
+                          } else {
+                            setQuickRange(opt.value);
+                          }
+                        }}
+                        className={[
+                          "px-3 py-1 rounded-full text-sm font-medium transition-all duration-150",
+                          selected
+                            ? "bg-ios-purple text-white ring-2 ring-ios-purple/40"
+                            : "bg-white/10 text-white/80 hover:bg-white/20"
+                        ].join(" ")}
+                      >
+                        {opt.label}
+                        {selected && (
+                          <i className="fas fa-check-circle text-white/90 ml-2 align-middle" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+
+
+
                 
                 <div>
                   <label className="block text-sm font-medium text-white/80 mb-2">
@@ -525,25 +554,34 @@ export default function History() {
                     data-testid="input-report-email"
                   />
                 </div>
-                
+
                 <div className="flex gap-3">
                   <Button
                     onClick={() => downloadReportMutation.mutate()}
-                    disabled={downloadReportMutation.isPending || !startDate || !endDate}
+                    disabled={
+                      downloadReportMutation.isPending || !startDate || !endDate
+                    }
                     className="ios-button flex-1 bg-ios-blue text-white rounded-2xl py-3 font-semibold disabled:opacity-50"
                     data-testid="button-download-report"
                   >
-                    <i className="fas fa-download mr-2"></i>
-                    {downloadReportMutation.isPending ? "Generating..." : "📄 Download PDF"}
+                    <i className="fas fa-download mr-2" />
+                    {downloadReportMutation.isPending
+                      ? "Generating..."
+                      : "📄 Download PDF"}
                   </Button>
-                  
+
                   <Button
                     onClick={() => sendReportMutation.mutate()}
-                    disabled={sendReportMutation.isPending || !startDate || !endDate || !reportEmail}
+                    disabled={
+                      sendReportMutation.isPending ||
+                      !startDate ||
+                      !endDate ||
+                      !reportEmail
+                    }
                     className="ios-button flex-1 bg-ios-red text-white rounded-2xl py-3 font-semibold disabled:opacity-50"
                     data-testid="button-send-report"
                   >
-                    <i className="fas fa-paper-plane mr-2"></i>
+                    <i className="fas fa-paper-plane mr-2" />
                     {sendReportMutation.isPending ? "Sending..." : "✉️ Email PDF"}
                   </Button>
                 </div>
@@ -551,11 +589,11 @@ export default function History() {
             </div>
           </section>
 
-          {/* Weekly History Section */}
+          {/* Weekly History */}
           <section className="mb-6">
             <div className="glass-strong rounded-3xl p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center">
-                <i className="fas fa-history text-ios-purple mr-3"></i>
+                <i className="fas fa-history text-ios-purple mr-3" />
                 Weekly History
               </h2>
 
@@ -563,14 +601,19 @@ export default function History() {
                 <div className="text-center py-8">
                   <i className="fas fa-chart-line text-4xl text-white/30 mb-4"></i>
                   <p className="text-white/70">No readings recorded yet</p>
-                  <p className="text-sm text-white/50 mt-2">Start tracking your blood sugar to see your history</p>
+                  <p className="text-sm text-white/50 mt-2">
+                    Start tracking your blood sugar to see your history
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {weekGroups.map((week) => {
                     const weekKey = format(week.weekStart, "yyyy-MM-dd");
                     const isExpanded = expandedWeeks.has(weekKey);
-                    const weekLabel = `🗓️ ${format(week.weekStart, "MMM d")} – ${format(week.weekEnd, "MMM d")}`;
+                    const weekLabel = `🗓️ ${format(
+                      week.weekStart,
+                      "MMM d"
+                    )} – ${format(week.weekEnd, "MMM d")}`;
 
                     return (
                       <div key={weekKey} className="glass rounded-2xl overflow-hidden">
@@ -584,58 +627,85 @@ export default function History() {
                               <i className="fas fa-calendar text-ios-purple"></i>
                             </div>
                             <div className="text-left">
-                              <div className="font-semibold text-white">{weekLabel}</div>
-                              <div className="text-sm text-white/70">{week.readings.length} readings</div>
+                              <div className="font-semibold text-white">
+                                {weekLabel}
+                              </div>
+                              <div className="text-sm text-white/70">
+                                {week.readings.length} readings
+                              </div>
                             </div>
                           </div>
-                          <i className={`fas fa-chevron-${isExpanded ? 'up' : 'down'} text-white/70`}></i>
+                          <i
+                            className={`fas fa-chevron-${
+                              isExpanded ? "up" : "down"
+                            } text-white/70`}
+                          ></i>
                         </button>
 
                         {isExpanded && (
                           <div className="border-t border-white/10">
                             <div className="p-4 space-y-3">
                               {week.readings
-                                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                                .sort(
+                                  (a, b) =>
+                                    new Date(b.timestamp).getTime() -
+                                    new Date(a.timestamp).getTime()
+                                )
                                 .map((reading) => (
-                                <div 
-                                  key={reading.id} 
-                                  className="glass-light rounded-xl p-3 flex items-center space-x-4"
-                                  data-testid={`reading-${reading.id}`}
-                                >
-                                  <div className="w-8 h-8 bg-glass-white rounded-full flex items-center justify-center flex-shrink-0">
-                                    <i className={`fas ${getMealIcon(reading.meal)} text-sm`}></i>
-                                  </div>
-                                  
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center space-x-2">
-                                      <span className={`font-semibold ${getReadingColor(reading.blood_sugar)}`}>
-                                        {reading.blood_sugar} mg/dL
-                                      </span>
-                                      <span className="text-white/50">•</span>
-                                      <span className="text-sm text-white/70 capitalize">{reading.meal}</span>
+                                  <div
+                                    key={reading.id}
+                                    className="glass-light rounded-xl p-3 flex items-center space-x-4"
+                                    data-testid={`reading-${reading.id}`}
+                                  >
+                                    <div className="w-8 h-8 bg-glass-white rounded-full flex items-center justify-center flex-shrink-0">
+                                      <i
+                                        className={`fas ${getMealIcon(
+                                          reading.meal
+                                        )} text-sm`}
+                                      ></i>
                                     </div>
-                                    <div className="text-xs text-white/60 mt-1">
-                                      {format(parseISO(reading.timestamp), "MMM d, h:mm a")} • {reading.carbs}g carbs • {reading.activity_level}
+
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center space-x-2">
+                                        <span
+                                          className={`font-semibold ${getReadingColor(
+                                            reading.blood_sugar
+                                          )}`}
+                                        >
+                                          {reading.blood_sugar} mg/dL
+                                        </span>
+                                        <span className="text-white/50">•</span>
+                                        <span className="text-sm text-white/70 capitalize">
+                                          {reading.meal}
+                                        </span>
+                                      </div>
+                                      <div className="text-xs text-white/60 mt-1">
+                                        {format(
+                                          parseISO(reading.timestamp),
+                                          "MMM d, h:mm a"
+                                        )}{" "}
+                                        • {reading.carbs}g carbs •{" "}
+                                        {reading.activity_level}
+                                      </div>
+                                      {reading.notes && (
+                                        <div className="text-xs text-white/50 mt-1 truncate">
+                                          💭 {reading.notes}
+                                        </div>
+                                      )}
                                     </div>
-                                    {reading.notes && (
-                                      <div className="text-xs text-white/50 mt-1 truncate">
-                                        💭 {reading.notes}
+
+                                    {reading.meal_image_url && (
+                                      <div className="flex-shrink-0">
+                                        <img
+                                          src={reading.meal_image_url}
+                                          alt="Meal photo"
+                                          className="w-12 h-12 rounded-lg object-cover"
+                                          data-testid={`meal-image-${reading.id}`}
+                                        />
                                       </div>
                                     )}
                                   </div>
-
-                                  {reading.meal_image_url && (
-                                    <div className="flex-shrink-0">
-                                      <img
-                                        src={reading.meal_image_url}
-                                        alt="Meal photo"
-                                        className="w-12 h-12 rounded-lg object-cover"
-                                        data-testid={`meal-image-${reading.id}`}
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
+                                ))}
                             </div>
                           </div>
                         )}
@@ -651,10 +721,16 @@ export default function History() {
         <BottomNav />
       </div>
 
-      <LoadingOverlay 
-        isVisible={sendReportMutation.isPending || downloadReportMutation.isPending} 
-        message={sendReportMutation.isPending ? "Sending Email Report..." : "Generating PDF Report..."} 
-        subtitle="Please wait" 
+      <LoadingOverlay
+        isVisible={
+          sendReportMutation.isPending || downloadReportMutation.isPending
+        }
+        message={
+          sendReportMutation.isPending
+            ? "Sending Email Report..."
+            : "Generating PDF Report..."
+        }
+        subtitle="Please wait"
       />
     </>
   );

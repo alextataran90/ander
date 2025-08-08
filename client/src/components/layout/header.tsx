@@ -44,7 +44,7 @@ export default function Header() {
   };
 
   return (
-    <header className="glass-strong rounded-b-3xl mx-4 mt-4 p-6 mb-6 animate-fade-in">
+    <header className="glass-strong rounded-b-3xl mx-4 mt-4 p-6 mb-6 animate-fade-in safe-area-top relative z-10">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-app-title">Ander</h1>

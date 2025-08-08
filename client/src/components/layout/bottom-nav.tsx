@@ -12,7 +12,7 @@ export default function BottomNav() {
   ];
 
   return (
-    <nav className="glass-strong rounded-t-3xl mx-4 mb-4 p-4 safe-area-bottom">
+    <nav className="glass-strong rounded-t-3xl mx-4 mb-4 p-4 safe-area-bottom fixed bottom-0 left-0 right-0 z-50">
       <div className="flex justify-around items-center">
         {navItems.map(({ path, icon, label, testId }) => (
           <Link key={path} href={path} data-testid={testId}>

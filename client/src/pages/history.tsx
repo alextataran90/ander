@@ -522,21 +522,6 @@ export default function History() {
                     />
                   </div>
                 </div>
-                
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-white/80 mb-2">
-                    🌐 Language
-                  </label>
-                  <select
-                    value={reportLang}
-                    onChange={(e) => setReportLang(e.target.value as 'en'|'es')}
-                    className="ios-input w-full"
-                    data-testid="input-report-language"
-                  >
-                    <option value="en">English</option>
-                    <option value="es">Español</option>
-                  </select>
-                </div>
 
                 {/* Quick Range Shortcuts - tiny pill buttons with toggle */}
                 <div className="flex gap-2 mb-4">

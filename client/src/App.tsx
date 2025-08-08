@@ -100,8 +100,8 @@ function App() {
               <div className="fixed inset-0 gradient-overlay pointer-events-none" />
               <Toaster position="top-center" richColors />
 
-              {/* IMPORTANT: tell wouter the app lives under /ander */}
-              <WouterRouter base="/ander">
+              {/* Router without base path for standard Replit */}
+              <WouterRouter>
                 <AppRoutes />
               </WouterRouter>
             </div>

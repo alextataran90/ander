@@ -89,7 +89,7 @@ function App() {
     }
   }, []);
 
-  //comment
+  //comment. 
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

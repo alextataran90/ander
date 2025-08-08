@@ -198,7 +198,34 @@ export default function History() {
       const pdf = generatePDF(filteredReadings);
       const pdfBlob = pdf.output("blob");
 
-      // Upload PDF to Supabase Storage
+      // Convert PDF to base64 for API transmission
+      const pdfBuffer = await pdfBlob.arrayBuffer();
+      const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBuffer)));
+
+      // Send email via API
+      const response = await fetch("/api/send-report", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          startDate,
+          endDate,
+          recipientEmail: reportEmail,
+          userEmail: user.email,
+          pdfBuffer: pdfBase64,
+          readingCount: filteredReadings.length,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to send report");
+      }
+
+      const result = await response.json();
+
+      // Also upload PDF to Supabase Storage for backup
       const fileName = `blood-sugar-report-${startDate}-to-${endDate}.pdf`;
       const filePath = `reports/${user.id}/${fileName}`;
 
@@ -210,16 +237,10 @@ export default function History() {
         });
 
       if (uploadError) {
-        throw new Error("Failed to upload PDF: " + uploadError.message);
+        console.warn("Failed to backup PDF:", uploadError.message);
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from("reports")
-        .getPublicUrl(filePath);
-
-      // For now, download the PDF since we don't have email service set up
-      // In a real app, you'd send this to your email service
+      // Also provide download option
       const url = window.URL.createObjectURL(pdfBlob);
       const a = document.createElement("a");
       a.href = url;
@@ -227,14 +248,18 @@ export default function History() {
       a.click();
       window.URL.revokeObjectURL(url);
 
-      return { success: true, url: urlData.publicUrl };
+      return result;
     },
     onSuccess: () => {
       triggerHaptic("heavy");
       toast({
-        title: "Report Generated!",
-        description: "Your PDF report has been downloaded. Email functionality coming soon!",
+        title: "Report Sent Successfully!",
+        description: `Your PDF report has been emailed to ${reportEmail} and downloaded locally.`,
       });
+      // Clear form
+      setStartDate("");
+      setEndDate("");
+      setReportEmail("");
     },
     onError: (error: any) => {
       triggerHaptic("medium");

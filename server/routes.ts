@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertBloodSugarReadingSchema } from "@shared/schema";
+import { sendBloodSugarReport } from "./email";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -102,6 +103,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(stats);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch statistics" });
+    }
+  });
+
+  // Send blood sugar report via email
+  app.post("/api/send-report", async (req, res) => {
+    try {
+      const { startDate, endDate, recipientEmail, userEmail, pdfBuffer, readingCount } = req.body;
+      
+      if (!startDate || !endDate || !recipientEmail || !userEmail || !pdfBuffer || readingCount === undefined) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Convert base64 PDF back to buffer
+      const buffer = Buffer.from(pdfBuffer, 'base64');
+      
+      const success = await sendBloodSugarReport(
+        recipientEmail,
+        userEmail,
+        buffer,
+        { start: startDate, end: endDate },
+        readingCount
+      );
+
+      if (success) {
+        res.json({ success: true, message: "Report sent successfully" });
+      } else {
+        res.status(500).json({ success: false, message: "Failed to send email" });
+      }
+    } catch (error) {
+      console.error("Error sending report:", error);
+      res.status(500).json({ success: false, message: "Failed to send report" });
     }
   });
 

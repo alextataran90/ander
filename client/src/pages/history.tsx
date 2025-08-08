@@ -200,30 +200,42 @@ export default function History() {
 
       // Convert PDF to base64 for API transmission
       const pdfBuffer = await pdfBlob.arrayBuffer();
-      const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBuffer)));
-
-      // Send email via API
-      const response = await fetch("/api/send-report", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          startDate,
-          endDate,
-          recipientEmail: reportEmail,
-          userEmail: user.email,
-          pdfBuffer: pdfBase64,
-          readingCount: filteredReadings.length,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to send report");
+      const bytes = new Uint8Array(pdfBuffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
       }
+      const pdfBase64 = btoa(binary);
 
-      const result = await response.json();
+      // Try to send email via API
+      let emailSent = false;
+      let emailError = null;
+      
+      try {
+        const response = await fetch("/api/send-report", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            startDate,
+            endDate,
+            recipientEmail: reportEmail,
+            userEmail: user.email,
+            pdfBuffer: pdfBase64,
+            readingCount: filteredReadings.length,
+          }),
+        });
+
+        if (response.ok) {
+          emailSent = true;
+        } else {
+          const errorData = await response.json();
+          emailError = errorData.message || "Failed to send email";
+        }
+      } catch (error) {
+        emailError = "Email service temporarily unavailable";
+      }
 
       // Also upload PDF to Supabase Storage for backup
       const fileName = `blood-sugar-report-${startDate}-to-${endDate}.pdf`;
@@ -248,14 +260,29 @@ export default function History() {
       a.click();
       window.URL.revokeObjectURL(url);
 
-      return result;
+      return { 
+        success: true, 
+        emailSent, 
+        emailError,
+        message: emailSent ? "Report emailed successfully" : "Report generated (email pending)"
+      };
     },
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       triggerHaptic("heavy");
-      toast({
-        title: "Report Sent Successfully!",
-        description: `Your PDF report has been emailed to ${reportEmail} and downloaded locally.`,
-      });
+      
+      if (result.emailSent) {
+        toast({
+          title: "Report Sent Successfully!",
+          description: `Your PDF report has been emailed to ${reportEmail} and downloaded locally.`,
+        });
+      } else {
+        toast({
+          title: "Report Generated!",
+          description: `PDF downloaded locally. Email setup needed - check SendGrid verification.`,
+          variant: "default",
+        });
+      }
+      
       // Clear form
       setStartDate("");
       setEndDate("");

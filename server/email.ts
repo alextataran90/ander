@@ -95,9 +95,11 @@ Note: This report is for personal health tracking purposes. Please consult with 
 Stay healthy!
   `;
 
+  // For SendGrid free accounts, sender must be verified. Using recipient email as sender
+  // since users can send emails to themselves without domain verification
   return sendEmail({
     to: recipientEmail,
-    from: userEmail, // Using user's email as sender
+    from: recipientEmail, // Use recipient email as sender (allowed for self-send)
     subject,
     text: textContent,
     html: htmlContent,

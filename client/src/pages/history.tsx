@@ -12,6 +12,7 @@ import {
   parseISO,
   subDays,
 } from "date-fns";
+import { es as esLocale } from "date-fns/locale";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -44,6 +45,7 @@ export default function History() {
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [reportLang, setReportLang] = useState<'en'|'es'>('en');
   
   // Initialize date inputs on component mount
   useEffect(() => {
@@ -162,7 +164,38 @@ export default function History() {
   };
 
   // PDF generation
-  const generatePDF = (filtered: Reading[]) => {
+  const generatePDF = (filtered: Reading[], lang: 'en'|'es') => {
+    const L = lang === 'es'
+      ? {
+          title: "Informe de Glucosa en Sangre",
+          period: "Periodo del Informe",
+          user: "Usuario",
+          totalReadings: "Lecturas Totales",
+          generated: "Generado",
+          headers: ["Fecha", "Hora", "Comida", "Glucosa"],
+          summary: "Estadísticas Resumen",
+          avg: "Glucosa Promedio",
+          normal: "Lecturas Normales (70-140)",
+          high: "Altas (>140)",
+          low: "Bajas (<70)",
+          notes: "Notas",
+        }
+      : {
+          title: "Blood Sugar Report",
+          period: "Report Period",
+          user: "User",
+          totalReadings: "Total Readings",
+          generated: "Generated",
+          headers: ["Date", "Time", "Meal", "Blood Sugar"],
+          summary: "Summary Statistics",
+          avg: "Average Blood Sugar",
+          normal: "Normal Readings (70-140)",
+          high: "High Readings (>140)",
+          low: "Low Readings (<70)",
+          notes: "Notes",
+        };
+
+    const localeOpt = lang === 'es' ? { locale: esLocale } : {};
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     const margin = 20;
@@ -170,27 +203,27 @@ export default function History() {
 
     doc.setFontSize(20);
     doc.setTextColor(40, 40, 40);
-    doc.text("Blood Sugar Report", pageWidth / 2, y, { align: "center" });
+    doc.text(L.title, pageWidth / 2, y, { align: "center" });
     y += 20;
 
     doc.setFontSize(12);
     doc.setTextColor(100, 100, 100);
-    doc.text(`Report Period: ${startDate} to ${endDate}`, pageWidth / 2, y, {
+    doc.text(`${L.period}: ${startDate} ${lang==='es' ? 'a' : 'to'} ${endDate}`, pageWidth / 2, y, {
       align: "center",
     });
     y += 15;
 
     doc.setFontSize(10);
     doc.setTextColor(60, 60, 60);
-    doc.text(`User: ${user?.email || "Unknown"}`, margin, y);
+    doc.text(`${L.user}: ${user?.email || "Unknown"}`, margin, y);
     y += 8;
-    doc.text(`Total Readings: ${filtered.length}`, margin, y);
-    doc.text(format(new Date(), "MMM d, yyyy h:mm a"), pageWidth - margin, y, {
+    doc.text(`${L.totalReadings}: ${filtered.length}`, margin, y);
+    doc.text(`${L.generated}: ${format(new Date(), "MMM d, yyyy h:mm a", localeOpt)}`, pageWidth - margin, y, {
       align: "right",
     });
     y += 20;
 
-    const colWidths = [35, 25, 30, 30, 25, 30]; // Date, Time, Meal, Blood Sugar, Carbs, Activity
+    const colWidths = [45, 30, 40, 35]; // Date, Time, Meal, Blood Sugar (removed Carbs & Activity)
     const rowH = 8;
     let curY = y;
 
@@ -200,12 +233,10 @@ export default function History() {
     doc.rect(margin, curY, pageWidth - 2 * margin, rowH, "F");
 
     let curX = margin + 2;
-    ["Date", "Time", "Meal", "Blood Sugar", "Carbs", "Activity"].forEach(
-      (h, i) => {
-        doc.text(h, curX, curY + 5);
-        curX += colWidths[i];
-      }
-    );
+    L.headers.forEach((h, i) => {
+      doc.text(h, curX, curY + 5);
+      curX += colWidths[i];
+    });
     curY += rowH;
 
     doc.setTextColor(40, 40, 40);
@@ -218,12 +249,10 @@ export default function History() {
         doc.setFillColor(79, 70, 229);
         doc.rect(margin, curY, pageWidth - 2 * margin, rowH, "F");
         curX = margin + 2;
-        ["Date", "Time", "Meal", "Blood Sugar", "Carbs", "Activity"].forEach(
-          (h, i) => {
-            doc.text(h, curX, curY + 5);
-            curX += colWidths[i];
-          }
-        );
+        L.headers.forEach((h, i) => {
+          doc.text(h, curX, curY + 5);
+          curX += colWidths[i];
+        });
         curY += rowH;
         doc.setTextColor(40, 40, 40);
       }
@@ -235,12 +264,10 @@ export default function History() {
 
       const d = parseISO(r.timestamp);
       const row = [
-        format(d, "MMM d, yyyy"),
-        format(d, "h:mm a"),
+        format(d, "MMM d, yyyy", localeOpt),
+        format(d, "h:mm a", localeOpt),
         r.meal,
         `${r.blood_sugar} mg/dL`,
-        `${r.carbs}g`,
-        r.activity_level,
       ];
 
       curX = margin + 2;
@@ -261,7 +288,7 @@ export default function History() {
         doc.rect(margin, curY, pageWidth - 2 * margin, rowH, "F");
         doc.setFontSize(7);
         doc.setTextColor(80, 80, 80);
-        doc.text(`Notes: ${r.notes}`, margin + 2, curY + 5);
+        doc.text(`${L.notes}: ${r.notes}`, margin + 2, curY + 5);
         curY += rowH;
         doc.setTextColor(40, 40, 40);
       }
@@ -275,32 +302,23 @@ export default function History() {
 
     const avgBS =
       filtered.reduce((s, r) => s + r.blood_sugar, 0) / filtered.length;
-    const avgCarbs =
-      filtered.reduce((s, r) => s + r.carbs, 0) / filtered.length;
     const highs = filtered.filter((r) => r.blood_sugar > 140).length;
     const lows = filtered.filter((r) => r.blood_sugar < 70).length;
+    const normal = filtered.length - highs - lows;
 
     doc.setFontSize(10);
     doc.setTextColor(60, 60, 60);
-    doc.text("Summary:", margin, curY);
+    doc.text(`${L.summary}:`, margin, curY);
     curY += 10;
 
     doc.setFontSize(8);
-    doc.text(`Average Blood Sugar: ${avgBS.toFixed(1)} mg/dL`, margin, curY);
+    doc.text(`${L.avg}: ${avgBS.toFixed(1)} mg/dL`, margin, curY);
     curY += 6;
-    doc.text(`Average Carbs: ${avgCarbs.toFixed(1)} g`, margin, curY);
+    doc.text(`${L.normal}: ${normal} (${((normal / filtered.length) * 100).toFixed(1)}%)`, margin, curY);
     curY += 6;
-    doc.text(
-      `High Readings (>140): ${highs} (${((highs / filtered.length) * 100).toFixed(1)}%)`,
-      margin,
-      curY
-    );
+    doc.text(`${L.high}: ${highs} (${((highs / filtered.length) * 100).toFixed(1)}%)`, margin, curY);
     curY += 6;
-    doc.text(
-      `Low Readings (<70): ${lows} (${((lows / filtered.length) * 100).toFixed(1)}%)`,
-      margin,
-      curY
-    );
+    doc.text(`${L.low}: ${lows} (${((lows / filtered.length) * 100).toFixed(1)}%)`, margin, curY);
 
     return doc;
   };
@@ -322,7 +340,7 @@ export default function History() {
       if (filtered.length === 0)
         throw new Error("No readings found in the selected date range");
 
-      const pdf = generatePDF(filtered);
+      const pdf = generatePDF(filtered, reportLang);
       const blob = pdf.output("blob");
       const fileName = `blood-sugar-report-${startDate}-to-${endDate}.pdf`;
 
@@ -366,7 +384,7 @@ export default function History() {
       if (filtered.length === 0)
         throw new Error("No readings found in the selected date range");
 
-      const pdf = generatePDF(filtered);
+      const pdf = generatePDF(filtered, reportLang);
       const blob = pdf.output("blob");
 
       // base64 for API
@@ -478,7 +496,7 @@ export default function History() {
                 Export Report
               </h2>
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
                     <label className="block text-sm font-medium text-white/80 mb-2">
                       📅 Start Date
@@ -503,6 +521,21 @@ export default function History() {
                       data-testid="input-end-date"
                     />
                   </div>
+                </div>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-white/80 mb-2">
+                    🌐 Language
+                  </label>
+                  <select
+                    value={reportLang}
+                    onChange={(e) => setReportLang(e.target.value as 'en'|'es')}
+                    className="ios-input w-full"
+                    data-testid="input-report-language"
+                  >
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                  </select>
                 </div>
 
                 {/* Quick Range Shortcuts - tiny pill buttons with toggle */}
@@ -545,9 +578,20 @@ export default function History() {
                   })}
                 </div>
 
-
-
-
+                <div>
+                  <label className="block text-sm font-medium text-white/80 mb-2">
+                    🌐 Language
+                  </label>
+                  <select
+                    value={reportLang}
+                    onChange={(e) => setReportLang(e.target.value as 'en'|'es')}
+                    className="ios-input w-full"
+                    data-testid="input-report-language"
+                  >
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                  </select>
+                </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-white/80 mb-2">

@@ -1,0 +1,257 @@
+PDF report tweaks — remove “Carbs” header & add language selector (EN/ES)
+Repo context
+Client code lives under: client/src
+
+PDF is generated in: client/src/pages/history.tsx (function generatePDF(...))
+
+App already uses date-fns
+
+Goals
+Remove the “Carbs” header/column from the PDF report table (if present anywhere).
+
+Add a language selector (English/Spanish) in the “Export Report” section and generate the PDF content in the chosen language.
+
+Steps
+1) Remove “Carbs” from the PDF table (if present)
+File: client/src/pages/history.tsx
+
+In generatePDF(...), ensure the table headers do NOT include “Carbs” and the rowData does not include any carbs value.
+
+The table should have exactly 4 columns: Date, Time, Meal, Blood Sugar.
+
+Ensure colWidths reflects 4 columns (e.g. [45, 30, 40, 35]).
+
+If any “Carbs” text appears in the PDF table (headers or rows), remove it.
+(Note: the weekly history UI line “• {reading.carbs}g carbs • …” can stay; only change the PDF.)
+
+2) Add language selection (EN/ES) for the PDF
+File: client/src/pages/history.tsx
+
+Add React state:
+
+ts
+Copy
+Edit
+const [reportLang, setReportLang] = useState<'en'|'es'>('en');
+Add a language <select> in the “Export Report” section (next to date inputs):
+
+tsx
+Copy
+Edit
+<div>
+  <label className="block text-sm font-medium text-white/80 mb-2">🌐 Language</label>
+  <select
+    value={reportLang}
+    onChange={(e) => setReportLang(e.target.value as 'en'|'es')}
+    className="ios-input w-full"
+    data-testid="input-report-language"
+  >
+    <option value="en">English</option>
+    <option value="es">Español</option>
+  </select>
+</div>
+Import the Spanish locale for date-fns:
+
+ts
+Copy
+Edit
+import { es as esLocale } from 'date-fns/locale';
+Refactor generatePDF to accept a lang argument and use localized strings + date locale:
+
+Change signature to:
+
+ts
+Copy
+Edit
+const generatePDF = (filteredReadings: Reading[], lang: 'en'|'es') => { ... }
+Define localized labels inside generatePDF:
+
+ts
+Copy
+Edit
+const L = lang === 'es'
+  ? {
+      title: "Informe de Glucosa en Sangre",
+      period: "Periodo del Informe",
+      user: "Usuario",
+      totalReadings: "Lecturas Totales",
+      generated: "Generado",
+      headers: ["Fecha", "Hora", "Comida", "Glucosa"],
+      summary: "Estadísticas Resumen",
+      avg: "Glucosa Promedio",
+      normal: "Lecturas Normales (70-140)",
+      high: "Altas (>140)",
+      low: "Bajas (<70)",
+      notes: "Notas",
+    }
+  : {
+      title: "Blood Sugar Report",
+      period: "Report Period",
+      user: "User",
+      totalReadings: "Total Readings",
+      generated: "Generated",
+      headers: ["Date", "Time", "Meal", "Blood Sugar"],
+      summary: "Summary Statistics",
+      avg: "Average Blood Sugar",
+      normal: "Normal Readings (70-140)",
+      high: "High Readings (>140)",
+      low: "Low Readings (<70)",
+      notes: "Notes",
+    };
+Use L.* labels instead of hard-coded English.
+
+For every format(...), pass the locale when lang === 'es':
+
+ts
+Copy
+Edit
+const localeOpt = lang === 'es' ? { locale: esLocale } : {};
+const dateStr = format(readingDate, "MMM d, yyyy", localeOpt);
+const timeStr = format(readingDate, "h:mm a", localeOpt);
+// Also for the "Generated" line’s date/time
+Update header drawing to L.headers and notes prefix to ${L.notes}: ....
+
+Update the two call sites to pass the chosen language:
+
+In download mutation:
+
+ts
+Copy
+Edit
+const pdf = generatePDF(filteredReadings, reportLang);
+In send email mutation:
+
+ts
+Copy
+Edit
+const pdf = generatePDF(filteredReadings, reportLang);
+3) Keep sharing/downloading behavior intact
+Do not change the shareOrDownloadPdf(...) calls or logic added previously.
+
+Filenames remain like: blood-sugar-report-${startDate}-to-${endDate}.pdf (ok in both languages).
+
+Code snippets to apply
+A) State + select UI (history.tsx)
+
+tsx
+Copy
+Edit
+// top of component
+const [reportLang, setReportLang] = useState<'en'|'es'>('en');
+
+// inside the Export Report section grid (add a third column if needed or place below)
+<div>
+  <label className="block text-sm font-medium text-white/80 mb-2">
+    🌐 Language
+  </label>
+  <select
+    value={reportLang}
+    onChange={(e) => setReportLang(e.target.value as 'en'|'es')}
+    className="ios-input w-full"
+    data-testid="input-report-language"
+  >
+    <option value="en">English</option>
+    <option value="es">Español</option>
+  </select>
+</div>
+B) generatePDF signature + localization
+
+ts
+Copy
+Edit
+import { es as esLocale } from "date-fns/locale";
+
+// change signature
+const generatePDF = (filteredReadings: Reading[], lang: 'en'|'es') => {
+  const L = lang === 'es'
+    ? {
+        title: "Informe de Glucosa en Sangre",
+        period: "Periodo del Informe",
+        user: "Usuario",
+        totalReadings: "Lecturas Totales",
+        generated: "Generado",
+        headers: ["Fecha", "Hora", "Comida", "Glucosa"],
+        summary: "Estadísticas Resumen",
+        avg: "Glucosa Promedio",
+        normal: "Lecturas Normales (70-140)",
+        high: "Altas (>140)",
+        low: "Bajas (<70)",
+        notes: "Notas",
+      }
+    : {
+        title: "Blood Sugar Report",
+        period: "Report Period",
+        user: "User",
+        totalReadings: "Total Readings",
+        generated: "Generated",
+        headers: ["Date", "Time", "Meal", "Blood Sugar"],
+        summary: "Summary Statistics",
+        avg: "Average Blood Sugar",
+        normal: "Normal Readings (70-140)",
+        high: "High Readings (>140)",
+        low: "Low Readings (<70)",
+        notes: "Notes",
+      };
+
+  const localeOpt = lang === 'es' ? { locale: esLocale } : {};
+  // ... use L.* and localeOpt throughout
+  // e.g. title:
+  doc.text(L.title, pageWidth / 2, y, { align: "center" });
+  // period:
+  doc.text(`${L.period}: ${startDate} ${lang==='es' ? 'a' : 'to'} ${endDate}`, pageWidth / 2, y, { align: "center" });
+  // user/summary labels etc.
+  // headers:
+  const headers = L.headers;
+  // notes row:
+  doc.text(`${L.notes}: ${reading.notes}`, margin + 2, currentY + 5);
+};
+C) Use the new signature at call sites
+
+ts
+Copy
+Edit
+// download mutation
+const pdf = generatePDF(filteredReadings, reportLang);
+
+// send email mutation
+const pdf = generatePDF(filteredReadings, reportLang);
+D) Ensure “Carbs” is not in the PDF table
+
+Confirm headers are exactly L.headers (4 items) and rowData has no carbs.
+
+Keep the weekly history UI untouched.
+
+Acceptance criteria
+✅ No “Carbs” header or carbs column appears anywhere in the PDF table.
+
+✅ “Export Report” section shows a Language selector with English and Español.
+
+✅ Generated PDF uses the selected language for:
+
+Title, “Report Period/Periodo del Informe”, “User/Usuario”, “Generated/Generado”
+
+Table headers (Date/Fecha, Time/Hora, Meal/Comida, Blood Sugar/Glucosa)
+
+Notes label (Notes/Notas)
+
+Summary section and bullet labels
+
+✅ Dates/times within the PDF reflect the language (Spanish month names when Spanish is selected).
+
+✅ Sharing/downloading still works on mobile (uses existing shareOrDownloadPdf logic).
+
+If you want, I can also have the Agent update the UI labels around the selector based on language, but per your request, only the PDF content needs to change language.
+
+
+
+
+
+
+
+
+
+Ask ChatGPT
+
+
+
+

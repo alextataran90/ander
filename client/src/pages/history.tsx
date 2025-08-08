@@ -561,13 +561,15 @@ export default function History() {
                     disabled={
                       downloadReportMutation.isPending || !startDate || !endDate
                     }
-                    className="ios-button flex-1 bg-ios-blue text-white rounded-2xl py-3 font-semibold disabled:opacity-50"
+                    className="ios-button flex-1 bg-ios-blue text-white rounded-2xl py-4 font-medium disabled:opacity-50 min-h-[60px]"
                     data-testid="button-download-report"
                   >
-                    <i className="fas fa-download mr-2" />
-                    {downloadReportMutation.isPending
-                      ? "Generating..."
-                      : "📄 Download PDF"}
+                    <div className="flex flex-col items-center space-y-1">
+                      <i className="fas fa-download text-lg" />
+                      <span className="text-xs">
+                        {downloadReportMutation.isPending ? "Generating..." : "Download"}
+                      </span>
+                    </div>
                   </Button>
 
                   <Button
@@ -578,11 +580,15 @@ export default function History() {
                       !endDate ||
                       !reportEmail
                     }
-                    className="ios-button flex-1 bg-ios-red text-white rounded-2xl py-3 font-semibold disabled:opacity-50"
+                    className="ios-button flex-1 bg-ios-red text-white rounded-2xl py-4 font-medium disabled:opacity-50 min-h-[60px]"
                     data-testid="button-send-report"
                   >
-                    <i className="fas fa-paper-plane mr-2" />
-                    {sendReportMutation.isPending ? "Sending..." : "✉️ Email PDF"}
+                    <div className="flex flex-col items-center space-y-1">
+                      <i className="fas fa-paper-plane text-lg" />
+                      <span className="text-xs">
+                        {sendReportMutation.isPending ? "Sending..." : "Email PDF"}
+                      </span>
+                    </div>
                   </Button>
                 </div>
               </div>

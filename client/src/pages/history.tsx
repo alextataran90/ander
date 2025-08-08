@@ -44,6 +44,16 @@ export default function History() {
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  
+  // Initialize date inputs on component mount
+  useEffect(() => {
+    if (!startDate && !endDate) {
+      const today = new Date();
+      const sevenDaysAgo = subDays(today, 7);
+      setStartDate(toYMD(sevenDaysAgo));
+      setEndDate(toYMD(today));
+    }
+  }, []); // Run only once on mount
   const [reportEmail, setReportEmail] = useState("");
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
 

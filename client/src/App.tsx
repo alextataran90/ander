@@ -27,7 +27,10 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
-    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
+      .matches
+      ? "dark"
+      : "light";
     const initialTheme = savedTheme || systemTheme;
 
     setTheme(initialTheme);
@@ -82,6 +85,7 @@ function AppRoutes() {
 
 function App() {
   // Auto-hide address bar on iOS Safari
+  //comment added
   useEffect(() => {
     if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
       const handleOrientationChange = () => {
@@ -91,7 +95,11 @@ function App() {
       };
 
       window.addEventListener("orientationchange", handleOrientationChange);
-      return () => window.removeEventListener("orientationchange", handleOrientationChange);
+      return () =>
+        window.removeEventListener(
+          "orientationchange",
+          handleOrientationChange,
+        );
     }
   }, []);
 

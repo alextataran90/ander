@@ -65,7 +65,11 @@ app.use((req, res, next) => {
     const vite = await createViteServer({
       root: clientRoot,                              // <-- CRITICAL
       configFile: path.resolve(process.cwd(), "vite.config.ts"),
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        allowedHosts: true,                          // Allow Replit preview subdomains
+        hmr: { clientPort: 443 }                     // Fix HMR on Replit HTTPS
+      },
       appType: "custom",
     });
 

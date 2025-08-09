@@ -15,6 +15,12 @@ import Login from "@/pages/login";
 import Signup from "@/pages/signup";
 import EmailConfirm from "@/pages/email-confirm";
 
+// Normalize Vite base for wouter:
+// - dev/Replit: BASE_URL = "/"  -> wouter base must be ""
+// - GitHub Pages project site: BASE_URL = "/ander/" -> wouter base should be "/ander"
+const rawBase = import.meta.env.BASE_URL || "/";
+const base = rawBase === "/" ? "" : rawBase.replace(/\/$/, "");
+
 // Theme Provider Component
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -38,7 +44,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   return <div data-theme={theme}>{children}</div>;
 }
 
-// App routes (was "Router" before; renamed so we can use Wouter's <Router>)
+// App routes
 function AppRoutes() {
   return (
     <Switch>
@@ -89,7 +95,6 @@ function App() {
     }
   }, []);
 
-  //comment. 
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
@@ -100,8 +105,8 @@ function App() {
               <div className="fixed inset-0 gradient-overlay pointer-events-none" />
               <Toaster position="top-center" richColors />
 
-              {/* Router without base path for standard Replit */}
-              <WouterRouter>
+              {/* Wouter with dynamic base (works in Replit and GitHub Pages) */}
+              <WouterRouter base={base}>
                 <AppRoutes />
               </WouterRouter>
             </div>

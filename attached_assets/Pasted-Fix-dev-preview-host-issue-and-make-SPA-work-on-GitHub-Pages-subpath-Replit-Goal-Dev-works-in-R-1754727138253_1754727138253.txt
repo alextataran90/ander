@@ -1,0 +1,287 @@
+Fix dev preview host issue, and make SPA work on GitHub Pages (subpath) + Replit
+Goal
+Dev works in Replit preview (no host-block error, HMR OK).
+
+Production build deploys to GitHub Pages project site alextataran90.github.io/ander/ with clean routes (no 404 on deep links).
+
+Routing uses wouter with the correct base in both environments.
+
+Constraints / context
+Project root contains: vite.config.ts, package.json, server/, client/, shared/.
+
+Client code lives in client/; entry is client/src/main.tsx; wouter router is in client/src/App.tsx.
+
+Server is Express in server/index.ts.
+
+Build output for the client should be dist/public (already in vite.config.ts).
+
+Two env files must exist at the project root:
+
+.env.development → VITE_BASE=/
+
+.env.production → VITE_BASE=/ander/
+
+Actions (make these exact edits)
+1) Ensure env files exist (project root)
+Create/overwrite:
+
+.env.development with:
+
+ini
+Copy
+Edit
+VITE_BASE=/
+.env.production with:
+
+ini
+Copy
+Edit
+VITE_BASE=/ander/
+Commit both. (.env.production is safe to commit; no secrets.)
+
+2) Replace vite.config.ts with this exact file
+ts
+Copy
+Edit
+import { defineConfig, loadEnv } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+
+export default defineConfig(async ({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+
+  const maybeCartographer =
+    process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined
+      ? (await import("@replit/vite-plugin-cartographer")).cartographer()
+      : null;
+
+  return {
+    plugins: [
+      react(),
+      runtimeErrorOverlay(),
+      ...(maybeCartographer ? [maybeCartographer] : []),
+    ],
+    resolve: {
+      alias: {
+        "@": path.resolve(import.meta.dirname, "client", "src"),
+        "@shared": path.resolve(import.meta.dirname, "shared"),
+        "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      },
+    },
+
+    // Dynamic base: dev=/ (Replit), prod=/ander/ (GitHub Pages)
+    base: env.VITE_BASE || "/",
+
+    root: path.resolve(import.meta.dirname, "client"),
+    build: {
+      outDir: path.resolve(import.meta.dirname, "dist/public"),
+      emptyOutDir: true,
+    },
+    server: {
+      // Allow Replit random preview subdomains; needed to remove host-block message
+      allowedHosts: true,
+      // Replit serves over HTTPS; helps HMR websocket connect
+      hmr: { clientPort: 443 },
+      fs: {
+        strict: true,
+        deny: ["**/.*"],
+      },
+    },
+    optimizeDeps: {
+      include: ["@supabase/supabase-js"],
+    },
+  };
+});
+3) Replace client/src/App.tsx with this exact file (wouter base)
+tsx
+Copy
+Edit
+import { Switch, Route, Router as WouterRouter } from "wouter";
+import { queryClient } from "./lib/queryClient";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { useState, useEffect } from "react";
+import { AuthProvider } from "@/hooks/use-auth";
+import ProtectedRoute from "@/components/auth/protected-route";
+import NotFound from "@/pages/not-found";
+import Home from "@/pages/home";
+import History from "@/pages/history";
+import Insights from "@/pages/insights";
+import Settings from "@/pages/settings";
+import Login from "@/pages/login";
+import Signup from "@/pages/signup";
+import EmailConfirm from "@/pages/email-confirm";
+
+// Normalize Vite base for wouter
+// dev/Replit: BASE_URL="/"   -> base=""
+// GitHub Pages: BASE_URL="/ander/" -> base="/ander"
+const rawBase = import.meta.env.BASE_URL || "/";
+const base = rawBase === "/" ? "" : rawBase.replace(/\/$/, "");
+
+function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
+    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    const initialTheme = savedTheme || systemTheme;
+    setTheme(initialTheme);
+    document.documentElement.classList.toggle("dark", initialTheme === "dark");
+  }, []);
+  return <div data-theme={theme}>{children}</div>;
+}
+
+function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <ProtectedRoute><Home /></ProtectedRoute>
+      </Route>
+      <Route path="/history">
+        <ProtectedRoute><History /></ProtectedRoute>
+      </Route>
+      <Route path="/insights">
+        <ProtectedRoute><Insights /></ProtectedRoute>
+      </Route>
+      <Route path="/settings">
+        <ProtectedRoute><Settings /></ProtectedRoute>
+      </Route>
+      <Route path="/login" component={Login} />
+      <Route path="/signup" component={Signup} />
+      <Route path="/email-confirm" component={EmailConfirm} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function App() {
+  // iOS Safari chrome hider
+  useEffect(() => {
+    if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+      const h = () => setTimeout(() => window.scrollTo(0, 1), 500);
+      window.addEventListener("orientationchange", h);
+      return () => window.removeEventListener("orientationchange", h);
+    }
+  }, []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <ThemeProvider>
+          <TooltipProvider>
+            <div className="relative z-10 safe-area-top safe-area-bottom">
+              <div className="fixed inset-0 gradient-overlay pointer-events-none" />
+              <Toaster position="top-center" richColors />
+              <WouterRouter base={base}>
+                <AppRoutes />
+              </WouterRouter>
+            </div>
+          </TooltipProvider>
+        </ThemeProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+}
+
+export default App;
+(Leave client/src/main.tsx as is — it should just render <App />.)
+
+4) Replace server/index.ts with this exact file (Vite middleware w/ root=client)
+ts
+Copy
+Edit
+import express, { type Request, Response, NextFunction } from "express";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import { createServer as createViteServer } from "vite";
+import { registerRoutes } from "./routes";
+import emailReportRouter from "./email-report";
+import { log } from "./vite";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: false }));
+
+app.use(emailReportRouter);
+
+// API logger (unchanged)
+app.use((req, res, next) => {
+  const start = Date.now();
+  const pathName = req.path;
+  let captured: any;
+  const originalJson = res.json.bind(res);
+  (res as any).json = (body: any, ...args: any[]) => { captured = body; return originalJson(body, ...args); };
+  res.on("finish", () => {
+    if (pathName.startsWith("/api")) {
+      let line = `${req.method} ${pathName} ${res.statusCode} in ${Date.now() - start}ms`;
+      if (captured) line += ` :: ${JSON.stringify(captured)}`;
+      if (line.length > 80) line = line.slice(0, 79) + "…";
+      log(line);
+    }
+  });
+  next();
+});
+
+(async () => {
+  const server = await registerRoutes(app);
+
+  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
+    res.status(status).json({ message });
+    throw err;
+  });
+
+  const isDev = app.get("env") === "development";
+
+  if (isDev) {
+    const clientRoot = path.resolve(__dirname, "..", "client");
+
+    const vite = await createViteServer({
+      root: clientRoot,
+      configFile: path.resolve(process.cwd(), "vite.config.ts"),
+      server: { middlewareMode: true },
+      appType: "custom",
+    });
+
+    app.use(vite.middlewares);
+
+    app.use(async (req, res, next) => {
+      if (req.path.startsWith("/api")) return next();
+      try {
+        const indexPath = path.join(clientRoot, "index.html");
+        let html = await fs.promises.readFile(indexPath, "utf-8");
+        html = await vite.transformIndexHtml(req.originalUrl, html);
+        res.setHeader("Content-Type", "text/html");
+        res.status(200).end(html);
+      } catch (e) {
+        next(e);
+      }
+    });
+  } else {
+    const staticDir = path.resolve(__dirname, "..", "dist", "public");
+    app.use(express.static(staticDir));
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith("/api")) return next();
+      res.sendFile(path.join(staticDir, "index.html"));
+    });
+  }
+
+  const port = parseInt(process.env.PORT || "5000", 10);
+  server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+    log(`[express] serving on port ${port}`);
+  });
+})();
+5) Update package.json scripts (add SPA fallback copy)
+In the root package.json, change "build" to:
+
+json
+Copy
+Edit
+"build": "vite build && cp dist/public/index.html dist/public/404.html && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist"
+(Windows runner alt: copy dist\\public\\index.html dist\\public\\404.html)

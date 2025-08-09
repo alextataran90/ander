@@ -68,7 +68,7 @@ app.use((req, res, next) => {
       server: { 
         middlewareMode: true,
         allowedHosts: true,                          // Allow Replit preview subdomains
-        hmr: { clientPort: 443 }                     // Fix HMR on Replit HTTPS
+        hmr: false                                   // Disable HMR to prevent connection loops
       },
       appType: "custom",
     });
